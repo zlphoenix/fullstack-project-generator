@@ -1,114 +1,86 @@
 import Foundation
 
-actor APIClient {
+enum APIError: Error, LocalizedError {
+    case invalidURL
+    case invalidResponse
+    case httpError(statusCode: Int)
+    case decodingError(Error)
+    case networkError(Error)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidURL:
+            return "The URL is invalid."
+        case .invalidResponse:
+            return "The server returned an invalid response."
+        case .httpError(let statusCode):
+            return "HTTP error with status code \(statusCode)."
+        case .decodingError(let error):
+            return "Failed to decode response: \(error.localizedDescription)"
+        case .networkError(let error):
+            return "Network error: \(error.localizedDescription)"
+        }
+    }
+}
+
+enum HTTPMethod: String {
+    case get = "GET"
+    case post = "POST"
+    case put = "PUT"
+    case delete = "DELETE"
+}
+
+final class APIClient: Sendable {
     static let shared = APIClient()
 
-    private let baseURL: URL
     private let session: URLSession
-    private var accessToken: String?
+    private let decoder: JSONDecoder
 
-    private init() {
-        baseURL = URL(string: Constants.apiBaseURL)!
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 15
-        session = URLSession(configuration: config)
+    init(session: URLSession = .shared) {
+        self.session = session
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        self.decoder = decoder
     }
 
-    // MARK: - Token Management
-
-    func setAccessToken(_ token: String) {
-        accessToken = token
-        UserDefaults.standard.set(token, forKey: Constants.accessTokenKey)
-    }
-
-    func clearTokens() {
-        accessToken = nil
-        UserDefaults.standard.removeObject(forKey: Constants.accessTokenKey)
-        UserDefaults.standard.removeObject(forKey: Constants.refreshTokenKey)
-    }
-
-    func loadStoredToken() {
-        accessToken = UserDefaults.standard.string(forKey: Constants.accessTokenKey)
-    }
-
-    // MARK: - HTTP Methods
-
-    func get<T: Codable>(_ path: String) async throws -> T {
-        try await request(path, method: "GET")
-    }
-
-    func post<T: Codable>(_ path: String, body: some Encodable) async throws -> T {
-        try await request(path, method: "POST", body: body)
-    }
-
-    func put<T: Codable>(_ path: String, body: some Encodable) async throws -> T {
-        try await request(path, method: "PUT", body: body)
-    }
-
-    func delete<T: Codable>(_ path: String) async throws -> T {
-        try await request(path, method: "DELETE")
-    }
-
-    // MARK: - Internal
-
-    private func request<T: Codable>(
-        _ path: String,
-        method: String,
-        body: (some Encodable)? = nil as String?
+    func request<T: Decodable>(
+        endpoint: String,
+        method: HTTPMethod = .get,
+        body: Encodable? = nil
     ) async throws -> T {
-        guard let url = URL(string: path, relativeTo: baseURL) else {
+        guard let url = URL(string: Constants.API.baseURL + endpoint) else {
             throw APIError.invalidURL
         }
 
-        var urlRequest = URLRequest(url: url)
-        urlRequest.httpMethod = method
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if let token = accessToken {
-            urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
+        var request = URLRequest(url: url)
+        request.httpMethod = method.rawValue
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         if let body {
-            urlRequest.httpBody = try JSONEncoder().encode(body)
+            request.httpBody = try JSONEncoder().encode(body)
         }
 
-        let (data, response) = try await session.data(for: urlRequest)
+        let data: Data
+        let response: URLResponse
+
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw APIError.networkError(error)
+        }
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.invalidResponse
-        }
-
-        if httpResponse.statusCode == 401 {
-            clearTokens()
-            throw APIError.unauthorized
         }
 
         guard (200...299).contains(httpResponse.statusCode) else {
             throw APIError.httpError(statusCode: httpResponse.statusCode)
         }
 
-        let apiResponse = try JSONDecoder().decode(APIResponse<T>.self, from: data)
-        guard let result = apiResponse.data else {
-            throw APIError.emptyData
-        }
-        return result
-    }
-}
-
-enum APIError: LocalizedError {
-    case invalidURL
-    case invalidResponse
-    case unauthorized
-    case httpError(statusCode: Int)
-    case emptyData
-
-    var errorDescription: String? {
-        switch self {
-        case .invalidURL: "Invalid URL"
-        case .invalidResponse: "Invalid response"
-        case .unauthorized: "Unauthorized"
-        case .httpError(let code): "HTTP error \(code)"
-        case .emptyData: "Empty data"
+        do {
+            return try decoder.decode(T.self, from: data)
+        } catch {
+            throw APIError.decodingError(error)
         }
     }
 }

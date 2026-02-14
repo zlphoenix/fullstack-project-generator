@@ -1,15 +1,22 @@
 import Foundation
+import Observation
 
 @Observable
-class HomeViewModel {
+final class HomeViewModel {
+    var users: [User] = []
     var isLoading = false
     var errorMessage: String?
 
-    private let apiClient = APIClient.shared
-
-    func loadData() async {
+    func fetchUsers() async {
         isLoading = true
-        defer { isLoading = false }
-        // TODO: Implement data loading from API
+        errorMessage = nil
+
+        do {
+            users = try await APIClient.shared.request(endpoint: "/users")
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isLoading = false
     }
 }

@@ -5,19 +5,30 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 8) {
+            Group {
                 if viewModel.isLoading {
-                    ProgressView()
+                    ProgressView("Loading...")
+                } else if let errorMessage = viewModel.errorMessage {
+                    ContentUnavailableView(
+                        "Error",
+                        systemImage: "exclamationmark.triangle",
+                        description: Text(errorMessage)
+                    )
                 } else {
-                    Text("Welcome to {{ProjectName}}")
-                        .font(.title)
-                    Text("Start building your app here.")
-                        .foregroundStyle(.secondary)
+                    List(viewModel.users) { user in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(user.name)
+                                .font(.headline)
+                            Text(user.email)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
             .navigationTitle("Home")
             .task {
-                await viewModel.loadData()
+                await viewModel.fetchUsers()
             }
         }
     }

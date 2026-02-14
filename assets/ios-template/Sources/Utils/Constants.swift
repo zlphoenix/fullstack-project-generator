@@ -1,8 +1,11 @@
 import Foundation
 
 enum Constants {
-    static let appName = "{{ProjectName}}"
-    static let apiBaseURL = "http://localhost:8080"
-    static let accessTokenKey = "access_token"
-    static let refreshTokenKey = "refresh_token"
+    enum API {
+        static let baseURL = "https://api.example.com/v1"
+    }
+
+    enum Storage {
+        static let authToken = "auth_token"
+    }
 }

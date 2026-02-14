@@ -1,4 +1,5 @@
 // swift-tools-version: 5.9
+
 import PackageDescription
 
 let package = Package(
@@ -6,14 +7,8 @@ let package = Package(
     platforms: [
         .iOS(.v17)
     ],
-    products: [
-        .library(
-            name: "{{ProjectName}}",
-            targets: ["{{ProjectName}}"]
-        )
-    ],
     targets: [
-        .target(
+        .executableTarget(
             name: "{{ProjectName}}",
             path: "Sources"
         )
