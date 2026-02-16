@@ -59,7 +59,7 @@ Phase 6: 部署规划 --> Docker 配置 + CI/CD
    - 产品定位：解决什么问题？目标用户是谁？
    - 核心功能：列出 3-5 个最重要的功能
    - 平台选择：需要哪些客户端？(iOS/Android/Web/Backend)
-   - 非功能需求：性能、安全、可用性要求
+   - 非功能需求：性能、安全、可用性、扩展性等方面要求
 
 2. **PRD 文档生成** -- 使用文档模板生成 `docs/PRD.md`：
    - 读取模板：`assets/docs-templates/PRD-template.md`
@@ -82,6 +82,7 @@ Phase 6: 部署规划 --> Docker 配置 + CI/CD
    - 确定系统分层：客户端 -> API Gateway -> 后台服务 -> 数据库
    - 技术选型：根据平台选择对应技术栈
    - 数据库设计：ER 图、表结构规划
+   - 架构图绘制：系统组件图描述系统逻辑架构以及模块之间的关系、部署图描述系统物理架构、数据流图描述数据在系统中的流动
 
 2. **API 契约定义** -- 生成 `api/openapi.yaml`：
    - 运行脚本生成骨架：`python3 scripts/generate_api_contract.py --prd docs/PRD.md --output api/openapi.yaml --name <ProjectName>`
