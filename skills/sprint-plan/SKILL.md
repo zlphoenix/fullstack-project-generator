@@ -13,13 +13,13 @@ description: |
 
 **目标：** 从 PRD Backlog 中选取本次 Sprint 的 User Stories，生成详细的 Sprint 计划文档。
 
-**方法论依据：** `../../references/methodology.md`（始终加载）
+**方法论依据：** `../shared/references/methodology.md`（始终加载）
 
 ---
 
 ## 前置准备
 
-1. 读取 `../../references/methodology.md`（Sprint 规划方法论）
+1. 读取 `../shared/references/methodology.md`（Sprint 规划方法论）
 2. 读取 `docs/PRD.md`（获取全部 User Stories 和优先级）
 3. 读取 `docs/sprint-*.md`（若存在，确定当前 Sprint 编号，自动递增）
 4. 读取 `api/openapi.yaml`（若存在，用于识别 API 变更）
@@ -49,7 +49,7 @@ description: |
 
 ## Step 2：生成 Sprint 计划文档
 
-读取模板：`../../assets/docs-templates/sprint-plan-template.md`，填充：
+读取模板：`./templates/sprint-plan-template.md`，填充：
 
 **Sprint 元信息：**
 ```markdown

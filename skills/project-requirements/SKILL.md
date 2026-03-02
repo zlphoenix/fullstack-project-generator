@@ -42,7 +42,7 @@ description: |
 
 ## Step 2：生成 PRD
 
-读取模板：`../../assets/docs-templates/PRD-template.md`，按以下规则填充：
+读取模板：`./templates/PRD-template.md`，按以下规则填充：
 
 **MoSCoW 分配原则：**
 - Must Have（~60%）：用户明确说的核心功能
@@ -91,4 +91,4 @@ US-1-001: 作为 <角色>，我希望 <动作>，以便 <收益>
 
 ## 参考文档
 
-如用户询问 User Story 格式或 Sprint 规划：读取 `../../references/methodology.md`
+如用户询问 User Story 格式或 Sprint 规划：读取 `../shared/references/methodology.md`

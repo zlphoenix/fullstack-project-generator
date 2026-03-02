@@ -13,7 +13,7 @@ description: |
 
 **目标：** 按测试金字塔生成各平台测试文件，确保关键路径有测试覆盖。
 
-**测试策略参考：** `../../references/testing-strategy.md`（始终加载）
+**测试策略参考：** `./references/testing-strategy.md`（始终加载）
 
 ---
 
@@ -21,7 +21,7 @@ description: |
 
 **状态读取（project-state MCP）：** 调用 `get_current_phase(project_dir)` — 从 `current_sprint` 字段定位最新 `docs/sprint-N.md`；从 `platforms` 字段确认需要测试哪些平台（作为询问用户时的默认选项）。
 
-读取 `../../references/testing-strategy.md`，然后：
+读取 `./references/testing-strategy.md`，然后：
 1. 读取 `api/openapi.yaml`（若存在），提取需要契约测试的 endpoint
 2. 读取最新 `docs/sprint-N.md`，从 Given/When/Then AC 推导测试场景
 3. 询问用户：聚焦哪个平台？还是全平台？

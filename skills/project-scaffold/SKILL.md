@@ -41,7 +41,7 @@ description: |
 ## Step 2：自动执行脚手架脚本
 
 ```bash
-python3 ../../scripts/init_project.py \
+python3 ./scripts/init_project.py \
   --name <ProjectName> \
   --platforms <ios|android|web|backend 空格分隔> \
   --output-dir <输出路径> \
@@ -49,7 +49,7 @@ python3 ../../scripts/init_project.py \
 ```
 
 脚本将：
-- 从 `../../assets/` 复制选定平台模板
+- 从 `./templates/` 复制选定平台模板
 - 替换占位符：`{{ProjectName}}`→CamelCase、`{{project-name}}`→kebab-case、`{{PROJECT_NAME}}`→大写
 - 创建 `docs/`、`api/`、`docker/` 目录并复制模板
 
@@ -62,21 +62,21 @@ python3 ../../scripts/init_project.py \
 **仅加载项目涉及的平台指南：**
 
 若包含 **Backend**：
-- 读取 `../../references/backend-guide.md`
+- 读取 `../shared/references/backend-guide.md`
 - 在 `backend/src/main/java/` 中确认包结构正确
 - 确认 `pom.xml` 依赖（Spring Data JPA、Spring Security、Springdoc OpenAPI）
 
 若包含 **iOS**：
-- 读取 `../../references/ios-guide.md`
+- 读取 `../shared/references/ios-guide.md`
 - 确认 MVVM 目录结构（Models/ViewModels/Views/Services）
 - 确认 APIClient 文件存在
 
 若包含 **Android**：
-- 读取 `../../references/android-guide.md`
+- 读取 `../shared/references/android-guide.md`
 - 确认 Hilt 配置、Navigation 结构
 
 若包含 **Web**：
-- 读取 `../../references/web-guide.md`
+- 读取 `../shared/references/web-guide.md`
 - 确认 Next.js App Router 结构、TypeScript 配置
 
 ---

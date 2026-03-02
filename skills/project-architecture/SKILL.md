@@ -27,7 +27,7 @@ description: |
 
 ## Step 1：生成架构设计文档
 
-读取模板：`../../assets/docs-templates/architecture-template.md`，填充以下内容：
+读取模板：`./templates/architecture-template.md`，填充以下内容：
 
 **系统分层架构：**
 ```
@@ -70,7 +70,7 @@ MySQL Database
 从 `docs/PRD.md` 提取项目名称（ProjectName），然后执行：
 
 ```bash
-python3 ../../scripts/generate_api_contract.py \
+python3 ./scripts/generate_api_contract.py \
   --prd docs/PRD.md \
   --output api/openapi.yaml \
   --name <ProjectName>
@@ -78,7 +78,7 @@ python3 ../../scripts/generate_api_contract.py \
 
 脚本执行后，读取生成的 `api/openapi.yaml`，根据 PRD User Stories 补充：
 - 每个 Must-Have Story 对应的具体 endpoint
-- Request/Response 数据结构（参考 `../../references/api-design.md`）
+- Request/Response 数据结构（参考 `./references/api-design.md`）
 - 认证方式：Bearer JWT（统一标准）
 
 **API 规范（必须遵守）：**
@@ -108,4 +108,4 @@ python3 ../../scripts/generate_api_contract.py \
 
 ## 参考文档
 
-- API 设计规范：`../../references/api-design.md`
+- API 设计规范：`./references/api-design.md`

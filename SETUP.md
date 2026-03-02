@@ -32,7 +32,26 @@ pip install 'anthropic[mcp]'
 
 将 `skills/` 目录下每个子目录作为独立 SKILL 安装。Claude Code 会自动识别包含 `SKILL.md` 的目录。
 
-### 3. 配置 MCP 服务（用于跨会话状态持久化）
+> **重要**：克隆或安装时必须保留完整仓库结构（`skills/`、`scripts/` 目录必须同级存在）。不要单独只复制 `skills/` 子目录，否则路径引用将失效。
+
+### 3. 配置脚本执行权限
+
+在**用户自己项目**的 `.claude/settings.json` 中添加以下权限（替换 `/your/path` 为实际安装路径）：
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 /your/path/fullstack-project-generator/skills/project-scaffold/scripts/init_project.py:*)",
+      "Bash(python3 /your/path/fullstack-project-generator/skills/project-architecture/scripts/generate_api_contract.py:*)"
+    ]
+  }
+}
+```
+
+这样在 SKILL 调用脚本时无需手动授权。
+
+### 4. 配置 MCP 服务（用于跨会话状态持久化）
 
 编辑 `.claude/settings.local.json`，将路径替换为本仓库实际路径：
 

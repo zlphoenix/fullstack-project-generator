@@ -14,15 +14,15 @@ import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SKILL_DIR = os.path.dirname(SCRIPT_DIR)
-ASSETS_DIR = os.path.join(SKILL_DIR, "assets")
+ASSETS_DIR = os.path.join(SKILL_DIR, "templates")
 
 VALID_PLATFORMS = ["ios", "android", "web", "backend"]
 
 TEMPLATE_DIRS = {
-    "ios": "ios-template",
-    "android": "android-template",
-    "web": "web-template",
-    "backend": "backend-template",
+    "ios": "ios",
+    "android": "android",
+    "web": "web",
+    "backend": "backend",
 }
 
 

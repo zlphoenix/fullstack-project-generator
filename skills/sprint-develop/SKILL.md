@@ -29,7 +29,7 @@ description: |
 ## 实现规范（按平台条件加载）
 
 ### Backend（Spring Boot）— 若选择后台平台
-读取 `../../references/backend-guide.md`，然后按以下顺序生成代码：
+读取 `../shared/references/backend-guide.md`，然后按以下顺序生成代码：
 
 1. **Entity**（`model/entity/`）：继承 BaseEntity，字段类型精确
 2. **Repository**（`repository/`）：JpaRepository + 必要的自定义查询
@@ -48,7 +48,7 @@ description: |
 ---
 
 ### iOS（Swift/SwiftUI）— 若选择 iOS 平台
-读取 `../../references/ios-guide.md`，按以下顺序生成：
+读取 `../shared/references/ios-guide.md`，按以下顺序生成：
 
 1. **Model**（`Models/`）：`Codable` struct，字段与 API 响应对齐
 2. **Service**（`Services/`）：protocol 定义 + 基于 `actor APIClient` 的实现
@@ -59,7 +59,7 @@ description: |
 ---
 
 ### Android（Kotlin/Compose）— 若选择 Android 平台
-读取 `../../references/android-guide.md`，按以下顺序生成：
+读取 `../shared/references/android-guide.md`，按以下顺序生成：
 
 1. **Model**（`data/model/`）：data class + `@SerializedName`
 2. **API 接口**（`data/network/`）：Retrofit interface，对齐 openapi.yaml
@@ -71,7 +71,7 @@ description: |
 ---
 
 ### Web（Next.js）— 若选择 Web 平台
-读取 `../../references/web-guide.md`，按以下顺序生成：
+读取 `../shared/references/web-guide.md`，按以下顺序生成：
 
 1. **类型定义**（`src/types/`）：TypeScript interface，与 API 响应对齐
 2. **API 模块**（`src/lib/api/`）：基于 `api-client.ts` 封装具体调用函数
