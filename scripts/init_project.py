@@ -60,7 +60,7 @@ def replace_in_filename(filename: str, project_name: str) -> str:
     return filename.replace("{{ProjectName}}", camel)
 
 
-def copy_template(platform: str, project_name: str, output_dir: str) -> list[str]:
+def copy_template(platform: str, project_name: str, output_dir: str, skip_existing: bool = False) -> list[str]:
     """Copy a platform template to the output directory with placeholder replacement."""
     template_dir = os.path.join(ASSETS_DIR, TEMPLATE_DIRS[platform])
     target_dir = os.path.join(output_dir, platform)
@@ -89,6 +89,9 @@ def copy_template(platform: str, project_name: str, output_dir: str) -> list[str
             new_filename = replace_in_filename(filename, project_name)
             dst_file = os.path.join(target_root, new_filename)
 
+            if skip_existing and os.path.exists(dst_file):
+                continue
+
             # Read and replace placeholders in file content
             try:
                 with open(src_file, "r", encoding="utf-8") as f:
@@ -106,7 +109,7 @@ def copy_template(platform: str, project_name: str, output_dir: str) -> list[str
     return created_files
 
 
-def copy_docs_templates(project_name: str, output_dir: str) -> list[str]:
+def copy_docs_templates(project_name: str, output_dir: str, skip_existing: bool = False) -> list[str]:
     """Copy documentation templates to docs/ directory."""
     docs_src = os.path.join(ASSETS_DIR, "docs-templates")
     docs_dst = os.path.join(output_dir, "docs")
@@ -128,6 +131,9 @@ def copy_docs_templates(project_name: str, output_dir: str) -> list[str]:
         new_name = filename.replace("-template", "")
         dst = os.path.join(docs_dst, new_name)
 
+        if skip_existing and os.path.exists(dst):
+            continue
+
         with open(src, "r", encoding="utf-8") as f:
             content = f.read()
         content = replace_placeholders(content, project_name)
@@ -139,7 +145,7 @@ def copy_docs_templates(project_name: str, output_dir: str) -> list[str]:
     return created_files
 
 
-def copy_docker(project_name: str, output_dir: str) -> list[str]:
+def copy_docker(project_name: str, output_dir: str, skip_existing: bool = False) -> list[str]:
     """Copy Docker configuration files."""
     docker_src = os.path.join(ASSETS_DIR, "docker")
     docker_dst = os.path.join(output_dir, "docker")
@@ -158,6 +164,8 @@ def copy_docker(project_name: str, output_dir: str) -> list[str]:
             continue
 
         dst = os.path.join(docker_dst, filename)
+        if skip_existing and os.path.exists(dst):
+            continue
         with open(src, "r", encoding="utf-8") as f:
             content = f.read()
         content = replace_placeholders(content, project_name)
@@ -191,12 +199,22 @@ def main():
         required=True,
         help="Output directory for the generated project.",
     )
+    parser.add_argument(
+        "--merge",
+        action="store_true",
+        help="Allow existing directory (e.g., when docs/ was created by project-requirements). "
+             "Skips overwriting existing files.",
+    )
 
     args = parser.parse_args()
 
     output_dir = os.path.abspath(args.output_dir)
-    if os.path.exists(output_dir) and os.listdir(output_dir):
-        print(f"Error: Output directory '{output_dir}' is not empty.", file=sys.stderr)
+    if os.path.exists(output_dir) and os.listdir(output_dir) and not args.merge:
+        print(
+            f"Error: Output directory '{output_dir}' is not empty.\n"
+            f"  If docs/ already exists from PRD phase, use --merge to scaffold alongside it.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     os.makedirs(output_dir, exist_ok=True)
@@ -212,19 +230,19 @@ def main():
     # Copy platform templates
     for platform in args.platforms:
         print(f"Setting up {platform}...")
-        files = copy_template(platform, args.name, output_dir)
+        files = copy_template(platform, args.name, output_dir, skip_existing=args.merge)
         all_created.extend(files)
         print(f"  Created {len(files)} files")
 
     # Copy documentation templates
     print("Setting up docs...")
-    doc_files = copy_docs_templates(args.name, output_dir)
+    doc_files = copy_docs_templates(args.name, output_dir, skip_existing=args.merge)
     all_created.extend(doc_files)
     print(f"  Created {len(doc_files)} files")
 
     # Copy Docker configuration
     print("Setting up docker...")
-    docker_files = copy_docker(args.name, output_dir)
+    docker_files = copy_docker(args.name, output_dir, skip_existing=args.merge)
     all_created.extend(docker_files)
     print(f"  Created {len(docker_files)} files")
 

@@ -19,8 +19,10 @@ description: |
 
 ## 前置准备
 
+**状态读取（project-state MCP）：** 调用 `get_current_phase(project_dir)` — 从 `project_name` 和 `platforms` 字段确认需要生成哪些 Dockerfile（web 对应 Dockerfile.web，backend 对应 Dockerfile.backend）；`output_dir` 字段即为项目根目录。
+
 读取 `../../references/deployment-guide.md`，然后：
-1. 从 `docs/PRD.md` 或 `docs/architecture.md` 获取项目名称和平台列表
+1. 从 `docs/PRD.md` 或 `docs/architecture.md` 获取项目名称和平台列表（若 MCP 状态未记录）
 2. 确认项目骨架已存在（backend/ 和/或 web/ 目录）
 
 ---
@@ -194,6 +196,11 @@ jobs:
 执行验证：
 ```bash
 docker-compose -f docker/docker-compose.yml config
+```
+
+**持久化状态（project-state MCP）：** 配置验证通过后调用：
+```json
+{ "phase": "deploy" }
 ```
 
 收尾提示：

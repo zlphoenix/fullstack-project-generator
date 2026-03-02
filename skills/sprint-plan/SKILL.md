@@ -24,7 +24,9 @@ description: |
 3. 读取 `docs/sprint-*.md`（若存在，确定当前 Sprint 编号，自动递增）
 4. 读取 `api/openapi.yaml`（若存在，用于识别 API 变更）
 
-**确定 Sprint 编号：** Sprint N = 已有最大编号 + 1（首次为 Sprint 1）
+**状态读取（project-state MCP）：** 调用 `get_current_phase(project_dir)` — 若返回 `current_sprint > 0`，以该值 +1 作为本次 Sprint 编号（优先于文件系统扫描结果）；`output_dir` 字段即为项目根目录。
+
+**确定 Sprint 编号：** Sprint N = MCP 中 `current_sprint` + 1，首次为 Sprint 1
 
 ---
 
@@ -94,6 +96,16 @@ Sprint 目标：[一句话描述本次交付价值]
 ## Step 3：风险评估与收尾
 
 列出本次 Sprint 的风险项（如：第三方 API 依赖、新技术点）。
+
+**持久化状态（project-state MCP）：** Sprint 计划用户确认后调用：
+```json
+{
+  "phase": "sprint_plan",
+  "current_sprint": 1,
+  "sprint_stories": { "sprint-1": ["US-1-001", "US-1-002"] }
+}
+```
+（将本次 Sprint 所有 Story ID 写入 `sprint_stories`，供 sprint-develop 通过 `list_open_stories` 读取）
 
 收尾提示：
 > "Sprint N 计划已保存至 docs/sprint-N.md。

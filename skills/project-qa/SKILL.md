@@ -19,6 +19,8 @@ description: |
 
 ## 前置准备
 
+**状态读取（project-state MCP）：** 调用 `get_current_phase(project_dir)` — 从 `current_sprint` 字段定位最新 `docs/sprint-N.md`；从 `platforms` 字段确认需要测试哪些平台（作为询问用户时的默认选项）。
+
 读取 `../../references/testing-strategy.md`，然后：
 1. 读取 `api/openapi.yaml`（若存在），提取需要契约测试的 endpoint
 2. 读取最新 `docs/sprint-N.md`，从 Given/When/Then AC 推导测试场景
@@ -112,5 +114,12 @@ description: |
 
 ## 收尾
 
-运行测试并展示结果。提示：
+运行测试并展示结果。
+
+**持久化状态（project-state MCP）：** 测试通过后调用：
+```json
+{ "phase": "qa" }
+```
+
+提示：
 > "测试已生成。若测试全部通过，使用 **project-deploy** SKILL 配置部署环境。"

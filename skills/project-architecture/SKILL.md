@@ -17,6 +17,8 @@ description: |
 
 ## 前置检查
 
+**状态检查（project-state MCP）：** 调用 `get_current_phase(project_dir)` — 从返回结果中读取 `project_name`（若已存在则无需从 PRD 重复提取），并确认当前阶段符合预期（应为 `"requirements"` 或 `"architecture"`）。
+
 1. 检查 `docs/PRD.md` 是否存在。若不存在，停止并提示：
    > "请先使用 **project-requirements** SKILL 生成 PRD 文档。"
 2. 读取 `docs/PRD.md`，提取：项目名称、选定平台、核心实体（名词）。
@@ -94,7 +96,11 @@ python3 ../../scripts/generate_api_contract.py \
 2. 数据库实体关系是否正确
 3. API 端点列表是否完整
 
-确认后提示：
+确认后：
+
+**持久化状态（project-state MCP）：** 调用 `write_project_state(project_dir, {"phase": "architecture"})`
+
+提示：
 > "架构文档已保存至 docs/architecture.md，API 契约已保存至 api/openapi.yaml。
 > 下一步请使用 **project-scaffold** SKILL 生成项目骨架代码。"
 

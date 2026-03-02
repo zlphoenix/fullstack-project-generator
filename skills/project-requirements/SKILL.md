@@ -18,6 +18,10 @@ description: |
 
 ## 前置检查
 
+**状态检查（project-state MCP）：** 若 MCP 可用，调用 `get_current_phase(project_dir)`：
+- 若 `phase` 不为 `"unknown"`，说明项目已在进行中，提示用户当前阶段，并询问是继续修订需求还是直接跳至对应 SKILL。
+- `project_dir` = 用户项目的根目录绝对路径（非本 skill 目录）。
+
 如果当前目录已存在 `docs/PRD.md`，停止并提示用户：
 > "项目已有 PRD 文档，请使用 **project-architecture** SKILL 进行架构设计，或直接告诉我需要修改哪些需求。"
 
@@ -69,7 +73,18 @@ US-1-001: 作为 <角色>，我希望 <动作>，以便 <收益>
 - 功能优先级表（MoSCoW）
 - User Stories 列表
 
-确认无误后提示：
+确认无误后：
+
+**持久化状态（project-state MCP）：** 调用 `write_project_state(project_dir, updates)`:
+```json
+{
+  "phase": "requirements",
+  "project_name": "<从PRD提取的项目名称>",
+  "platforms": ["web", "backend"]
+}
+```
+
+提示：
 > "PRD 已生成至 docs/PRD.md。下一步请使用 **project-architecture** SKILL 进行架构设计。"
 
 ---

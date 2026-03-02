@@ -19,9 +19,10 @@ description: |
 
 ## 前置准备
 
-1. 读取最新的 `docs/sprint-N.md`（确定当前 Sprint 和 Story 列表）
-2. 读取 `api/openapi.yaml`（获取 API 定义）
-3. 询问用户：**实现哪条 Story？在哪个平台？**
+1. **状态读取（project-state MCP）：** 调用 `get_current_phase(project_dir)` 获取 `current_sprint`，然后调用 `list_open_stories(project_dir, current_sprint)` 获取未完成 Stories 列表，直接展示给用户选择（替代手动扫描文档）。
+2. 读取最新的 `docs/sprint-N.md`（获取 Story 详情和验收标准）
+3. 读取 `api/openapi.yaml`（获取 API 定义）
+4. 询问用户：**实现哪条 Story？在哪个平台？**
 
 ---
 
@@ -87,6 +88,12 @@ description: |
 - [ ] 单元测试通过（覆盖正常路径 + 至少 1 个异常路径）
 - [ ] 无编译错误
 - [ ] 代码分层清晰（无跨层直接调用）
+
+**持久化状态（project-state MCP）：** Story 完成后调用：
+```json
+{ "phase": "sprint_develop", "story_status": { "US-N-001": "completed" } }
+```
+若 `list_open_stories` 返回的所有 Stories 均已完成，提示用户可进入 QA 阶段。
 
 完成后提示：
 > "Story 已实现完毕。若本 Sprint 还有其他 Story，继续调用 sprint-develop；

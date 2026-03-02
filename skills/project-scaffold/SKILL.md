@@ -21,8 +21,10 @@ description: |
 检查 `docs/architecture.md` 是否存在。若不存在，停止并提示：
 > "请先使用 **project-architecture** SKILL 完成架构设计。"
 
+**状态读取（project-state MCP）：** 调用 `get_current_phase(project_dir)` — 从返回结果优先读取 `project_name` 和 `platforms`（作为脚手架参数的默认值，无需用户重复输入）。
+
 从以下位置提取必要信息：
-- `docs/PRD.md` → 项目名称（ProjectName）、选定平台列表
+- `docs/PRD.md` → 项目名称（ProjectName）、选定平台列表（若 MCP 状态未记录）
 - `docs/architecture.md` → 确认平台和技术栈
 
 ---
@@ -42,7 +44,8 @@ description: |
 python3 ../../scripts/init_project.py \
   --name <ProjectName> \
   --platforms <ios|android|web|backend 空格分隔> \
-  --output-dir <输出路径>
+  --output-dir <输出路径> \
+  [--merge]    # 若 docs/ 已由 project-requirements 创建，加此参数保留已有文档
 ```
 
 脚本将：
@@ -84,6 +87,11 @@ python3 ../../scripts/init_project.py \
 - Backend：`cd backend && mvn compile -q`（确认无编译错误）
 - Web：`cd web && npm install && npm run build`（确认构建成功）
 - iOS/Android：提示用户在 Xcode/Android Studio 中打开并编译
+
+**持久化状态（project-state MCP）：** 生成成功后调用：
+```json
+{ "phase": "scaffold", "output_dir": "<实际输出路径的绝对路径>" }
+```
 
 收尾提示：
 > "项目骨架已生成至 <输出路径>。
