@@ -15,6 +15,8 @@ description: |
 
 **测试策略参考：** `./references/testing-strategy.md`（始终加载）
 
+> **遥测（可选）**：在开始/完成、以及测试结果（`verification` kind=test）时按 `../shared/references/telemetry-points.md` 发送事件（best-effort；未配置 `FPG_HOME` 则跳过）。
+
 ---
 
 ## 前置准备

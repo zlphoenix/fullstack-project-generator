@@ -15,6 +15,8 @@ description: |
 
 **部署指南参考：** `./references/deployment-guide.md`（始终加载）
 
+> **遥测（可选）**：在开始/完成时按 `../shared/references/telemetry-points.md` 发送事件（best-effort；未配置 `FPG_HOME` 则跳过）。
+
 ---
 
 ## 前置准备

@@ -16,23 +16,30 @@ import argparse
 from datetime import datetime, timezone
 from pathlib import Path
 
-# 尝试导入 fastmcp；若未安装则提示安装
+# 尝试导入 fastmcp。注意：内置自测（--test）不依赖 mcp 库，因此这里不直接退出，
+# 而是用一个 no-op 装饰器兜底，让 @mcp.tool() 在缺库时也能定义函数（仅供 --test 调用）。
+# 真正以 MCP stdio 模式运行时若缺库才报错退出（见 __main__）。
 try:
     from mcp.server.fastmcp import FastMCP
-except ImportError:
-    print(
-        "错误：未安装 mcp 库。请运行：pip install mcp\n"
-        "或使用完整包：pip install 'anthropic[mcp]'",
-        file=sys.stderr,
+
+    _HAS_MCP = True
+    mcp = FastMCP(
+        name="project-state",
+        instructions="全栈项目状态追踪服务，持久化项目阶段、Sprint 进度和 Story 完成状态",
     )
-    sys.exit(1)
+except ImportError:
+    _HAS_MCP = False
 
-# ─── MCP 服务器初始化 ─────────────────────────────────────────────────────────
+    class _NoopMCP:
+        """缺少 mcp 库时的占位，使 @mcp.tool() 退化为恒等装饰器。"""
 
-mcp = FastMCP(
-    name="project-state",
-    instructions="全栈项目状态追踪服务，持久化项目阶段、Sprint 进度和 Story 完成状态",
-)
+        def tool(self, *args, **kwargs):
+            def _decorator(func):
+                return func
+
+            return _decorator
+
+    mcp = _NoopMCP()
 
 STATE_FILENAME = ".project-state.json"
 
@@ -278,6 +285,13 @@ if __name__ == "__main__":
 
     if args.test:
         _run_tests()
+    elif not _HAS_MCP:
+        print(
+            "错误：未安装 mcp 库。请运行：pip install mcp\n"
+            "或使用完整包：pip install 'anthropic[mcp]'",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     else:
         # 正常 MCP stdio 模式
         mcp.run()

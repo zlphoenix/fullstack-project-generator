@@ -13,6 +13,8 @@ description: |
 
 **目标：** 设计技术架构，自动生成 OpenAPI 骨架，锁定前后端契约。
 
+> **遥测（可选）**：在开始/完成、以及生成/变更契约（`contract_change`）时按 `../shared/references/telemetry-points.md` 发送事件（best-effort；未配置 `FPG_HOME` 则跳过）。
+
 ---
 
 ## 前置检查

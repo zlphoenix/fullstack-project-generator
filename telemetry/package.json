@@ -1,0 +1,15 @@
+{
+  "name": "fpg-telemetry",
+  "version": "0.1.0",
+  "private": true,
+  "description": "fullstack-project-generator 集中式遥测：收集器 + 报表（Bun/TypeScript，零外部依赖）",
+  "type": "module",
+  "scripts": {
+    "collector": "bun run src/server.ts",
+    "report": "bun run src/report.ts",
+    "test": "bun test"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  }
+}

@@ -15,6 +15,8 @@ description: |
 
 **范围限定：每次调用只实现 1 个 Story × 1 个平台。**
 
+> **遥测（可选）**：选定 Story 后 `story_start`、完成后 `story_complete`、重开已完成 Story 时 `story_reopen`、验收时 `verification`，按 `../shared/references/telemetry-points.md` 发送（best-effort；未配置 `FPG_HOME` 则跳过）。
+
 ---
 
 ## 前置准备

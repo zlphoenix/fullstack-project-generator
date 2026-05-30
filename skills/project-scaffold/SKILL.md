@@ -14,6 +14,8 @@ description: |
 
 **目标：** 自动运行脚手架脚本，生成各平台可运行的项目骨架，并按架构文档定制代码。
 
+> **遥测（可选）**：在开始/完成时按 `../shared/references/telemetry-points.md` 发送事件（best-effort；未配置 `FPG_HOME` 则跳过）。
+
 ---
 
 ## 前置检查

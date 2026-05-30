@@ -14,6 +14,8 @@ description: |
 
 **目标：** 通过 4 个聚焦问题完成需求访谈，生成规范的产品需求文档。
 
+> **遥测（可选）**：在开始/完成时按 `../shared/references/telemetry-points.md` 发送事件（best-effort；未配置 `FPG_HOME` 则跳过，不影响流程）。
+
 ---
 
 ## 前置检查
