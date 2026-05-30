@@ -3,3 +3,6 @@ __pycache__/
 .idea/
 .vscode/
 
+
+# Telemetry runtime state (collector DB/pid/log)
+telemetry/data/

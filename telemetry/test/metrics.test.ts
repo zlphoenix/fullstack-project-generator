@@ -40,6 +40,10 @@ describe("validateEvent", () => {
   test("非对象输入被拒绝", () => {
     expect(validateEvent("x").ok).toBe(false);
   });
+  test("接受工具 hook 事件类型", () => {
+    expect(validateEvent({ event_type: "turn_complete", project_id: "p" }).ok).toBe(true);
+    expect(validateEvent({ event_type: "session_start", project_id: "p" }).ok).toBe(true);
+  });
 });
 
 describe("computeMetrics", () => {

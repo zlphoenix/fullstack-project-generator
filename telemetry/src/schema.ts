@@ -12,6 +12,9 @@ export const EVENT_TYPES = [
   "story_reopen",
   "contract_change",
   "verification",
+  // 工具侧 hook 自动发出的事件（不依赖模型自觉）：
+  "session_start", // 会话开始（Claude SessionStart hook）
+  "turn_complete", // 一个 agent 回合结束（Codex notify / Claude Stop hook）
 ] as const;
 export const OUTCOMES = ["ok", "fail", "skip"] as const;
 

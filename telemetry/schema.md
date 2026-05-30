@@ -34,6 +34,10 @@
 | `story_reopen` | 已完成 Story 被重新打开（**返工**信号） | `story`, `reason?` |
 | `contract_change` | API 契约变更 | `version?` |
 | `verification` | 一次验证/验收（编译/测试/AC） | `kind`(compile\|test\|ac\|e2e), `outcome` |
+| `session_start` | 会话开始（**工具 hook 自动**：Claude SessionStart） | `hook` |
+| `turn_complete` | 一个 agent 回合结束（**工具 hook 自动**：Codex notify / Claude Stop） | `codex_event`/`hook`, `turn_id` |
+
+> `session_start` / `turn_complete` 由**工具侧 hook 自动发出**（见 `hooks/`），不依赖模型在 SKILL 里自觉调用 emit——这是"使用即度量"可靠性的关键。其余事件仍由 SKILL 在关键时机 best-effort 发出。
 
 ## 示例
 

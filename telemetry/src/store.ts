@@ -29,6 +29,16 @@ export class EventStore {
     `);
     this.db.run("CREATE INDEX IF NOT EXISTS idx_events_project ON events(project_id);");
     this.db.run("CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);");
+    this.migrate();
+  }
+
+  /** 轻量迁移：为旧库补齐后加的列（CREATE TABLE IF NOT EXISTS 不会改已存在的表）。 */
+  private migrate(): void {
+    const cols = this.db.query("PRAGMA table_info(events)").all() as { name: string }[];
+    const have = new Set(cols.map((c) => c.name));
+    if (!have.has("milestone")) {
+      this.db.run("ALTER TABLE events ADD COLUMN milestone TEXT");
+    }
   }
 
   /** 幂等插入（event_id 重复则忽略，支持离线补传重发）。返回是否为新事件。 */
