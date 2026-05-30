@@ -13,6 +13,7 @@ function ev(partial: Partial<TelemetryEvent>): TelemetryEvent {
     actor_id: "anonymous",
     tool: "claude",
     project_id: "demo",
+    milestone: "",
     skill: "",
     phase: "",
     event_type: "skill_start",
@@ -90,6 +91,19 @@ describe("computeMetrics", () => {
     expect(m.total_events).toBe(0);
     expect(m.rework_rate).toBe(0);
     expect(m.ac_pass_rate).toBeNull();
+  });
+
+  test("按里程碑分布", () => {
+    const events = [
+      ev({ event_type: "skill_start", milestone: "M1" }),
+      ev({ event_type: "skill_start", milestone: "M1" }),
+      ev({ event_type: "skill_start", milestone: "M2" }),
+      ev({ event_type: "skill_start", milestone: "" }),
+    ];
+    const m = computeMetrics(events);
+    expect(m.by_milestone["M1"]).toBe(2);
+    expect(m.by_milestone["M2"]).toBe(1);
+    expect(m.by_milestone["(none)"]).toBe(1);
   });
 });
 

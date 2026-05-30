@@ -14,83 +14,56 @@ description: |
 
 **目标：** 通过 4 个聚焦问题完成需求访谈，生成规范的产品需求文档。
 
-> **遥测（可选）**：在开始/完成时按 `../shared/references/telemetry-points.md` 发送事件（best-effort；未配置 `FPG_HOME` 则跳过，不影响流程）。
+> 通用约定与遥测埋点见项目根 `AGENTS.md`；方法论见 `.fpg/references/methodology.md`。
 
 ---
 
-## 前置检查
+## 1. 前置检查（先看产物，判断现状）
 
-**状态检查（project-state MCP）：** 若 MCP 可用，调用 `get_current_phase(project_dir)`：
-- 若 `phase` 不为 `"unknown"`，说明项目已在进行中，提示用户当前阶段，并询问是继续修订需求还是直接跳至对应 SKILL。
-- `project_dir` = 用户项目的根目录绝对路径（非本 skill 目录）。
-
-如果当前目录已存在 `docs/PRD.md`，停止并提示用户：
-> "项目已有 PRD 文档，请使用 **project-architecture** SKILL 进行架构设计，或直接告诉我需要修改哪些需求。"
+- 若当前目录已存在 `docs/PRD.md`：停止并提示
+  > "项目已有 PRD，请使用 **project-architecture** 进行架构设计，或告诉我要修改哪些需求。"
+- 否则进入访谈。遥测（best-effort，未配置 `FPG_HOME` 则跳过）：
+  ```bash
+  [ -n "$FPG_HOME" ] && bash "$FPG_HOME/telemetry/emit.sh" --event-type phase_enter \
+    --project <项目名kebab> --phase requirements --skill project-requirements
+  ```
 
 ---
 
-## Step 1：需求访谈（单次提问，4 个问题同时发出）
+## 2. 需求访谈（一条消息发出 4 个问题）
 
-在一条消息中向用户提出以下问题：
-
-1. **产品定位**：这个产品解决什么问题？目标用户是谁？
-2. **核心功能**：列出 3-5 个最重要的功能（这些是 Must-Have）
+1. **产品定位**：解决什么问题？目标用户是谁？
+2. **核心功能**：列出 3–5 个最重要的功能（这些是 Must-Have）。
 3. **平台选择**：需要哪些客户端？（iOS / Android / Web / 仅后台 API）
-4. **非功能需求**：有哪些特殊要求？（如：用户规模、响应时间、离线支持、第三方集成）
+4. **非功能需求**：用户规模、响应时间、离线支持、第三方集成、安全等。
 
-等待用户完整回答后再进入 Step 2。
-
----
-
-## Step 2：生成 PRD
-
-读取模板：`./templates/PRD-template.md`，按以下规则填充：
-
-**MoSCoW 分配原则：**
-- Must Have（~60%）：用户明确说的核心功能
-- Should Have（~20%）：对体验重要但非核心
-- Could Have（~15%）：锦上添花
-- Won't Have（~5%）：明确排除
-
-**User Story 格式（每个 Must-Have 功能至少 1 条）：**
-```
-US-1-001: 作为 <角色>，我希望 <动作>，以便 <收益>
-验收标准：
-  Given <前置条件>
-  When <操作>
-  Then <预期结果>
-```
-
-**User Story 规模原则（参考 methodology.md）：**
-- 每条 Story 应能在 1 个 Sprint 内完成
-- 若功能过大，拆分为多条 Story
-
-输出文件：`docs/PRD.md`（使用 Write 工具创建）
+> 不要臆测缺失信息——不清楚就追问，把假设摆出来再继续（行为准则 §1）。等用户完整回答后再生成。
 
 ---
 
-## Step 3：确认与收尾
+## 3. 生成 PRD
 
-将 PRD 关键内容呈现给用户审核：
-- 功能优先级表（MoSCoW）
-- User Stories 列表
+读取模板 `./templates/PRD-template.md`，按规则填充：
+- **MoSCoW**：Must(~60%) / Should(~20%) / Could(~15%) / Won't(~5%)。
+- **User Story**（每个 Must-Have ≥1 条）满足 INVEST：
+  ```
+  US-1-001: 作为 <角色>，我希望 <动作>，以便 <收益>
+  验收标准（≥3 个场景）：Given <前置> / When <操作> / Then <预期>
+  ```
+- Story 粒度按"人可一次审查"切；过大则拆分（见 `.fpg/references/methodology.md`）。
 
-确认无误后：
-
-**持久化状态（project-state MCP）：** 调用 `write_project_state(project_dir, updates)`:
-```json
-{
-  "phase": "requirements",
-  "project_name": "<从PRD提取的项目名称>",
-  "platforms": ["web", "backend"]
-}
-```
-
-提示：
-> "PRD 已生成至 docs/PRD.md。下一步请使用 **project-architecture** SKILL 进行架构设计。"
+输出 `docs/PRD.md`（Write 工具）。
 
 ---
 
-## 参考文档
+## 4. 确认与收尾
 
-如用户询问 User Story 格式或 Sprint 规划：读取 `../shared/references/methodology.md`
+向用户呈现 MoSCoW 优先级表 + User Stories 列表审核。确认后：
+1. 若项目无 `PROGRESS.md`，创建并填写"当前里程碑/目标/下一步=架构设计"。
+2. 遥测：
+   ```bash
+   [ -n "$FPG_HOME" ] && bash "$FPG_HOME/telemetry/emit.sh" --event-type phase_complete \
+     --project <项目名kebab> --phase requirements --skill project-requirements --outcome ok
+   ```
+3. 提示：
+   > "PRD 已生成至 docs/PRD.md。下一步请使用 **project-architecture** 设计架构与 API 契约。"

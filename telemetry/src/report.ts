@@ -76,6 +76,11 @@ function toMarkdown(m: Metrics, scope: string): string {
   const projRows = Object.entries(m.by_project).map(([k, v]) => [k, String(v)]);
   lines.push(projRows.length ? table(["项目", "事件数"], projRows) : "_（无）_");
   lines.push("");
+  lines.push(`## 按里程碑分布`);
+  lines.push("");
+  const msRows = Object.entries(m.by_milestone).map(([k, v]) => [k, String(v)]);
+  lines.push(msRows.length ? table(["里程碑", "事件数"], msRows) : "_（无）_");
+  lines.push("");
   lines.push(`## 解读提示`);
   lines.push("");
   lines.push(`- **返工率**是核心质量信号：DORA 2025 仅 7.3% 团队 < 2%。持续上升说明"提速"可能是假象（生产力悖论）。`);

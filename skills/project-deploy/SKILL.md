@@ -11,94 +11,40 @@ description: |
 
 # project-deploy — Docker 容器化与 CI/CD
 
-**目标：** 从模板复制并定制多阶段 Dockerfile、docker-compose 编排文件和 GitHub Actions CI 流水线。
+**目标：** 从模板复制并定制多阶段 Dockerfile、docker-compose 与 GitHub Actions CI。
+**部署指南参考：** `./references/deployment-guide.md`（始终加载）。
 
-**部署指南参考：** `./references/deployment-guide.md`（始终加载）
-
-> **遥测（可选）**：在开始/完成时按 `../shared/references/telemetry-points.md` 发送事件（best-effort；未配置 `FPG_HOME` 则跳过）。
-
----
-
-## 前置准备
-
-**状态读取（project-state MCP）：** 调用 `get_current_phase(project_dir)` — 从 `project_name` 和 `platforms` 字段确认需要生成哪些 Dockerfile；`output_dir` 字段即为项目根目录。
-
-读取 `./references/deployment-guide.md`，然后：
-1. 从 `docs/PRD.md` 或 `docs/architecture.md` 获取项目名称和平台列表（若 MCP 状态未记录）
-2. 确认项目骨架已存在（backend/ 和/或 web/ 目录）
+> 通用约定与遥测见项目根 `AGENTS.md`。
 
 ---
 
-## Step 1：生成 Dockerfiles
+## 1. 前置准备
 
-从模板复制到项目的 `docker/` 目录（按项目实际包含的平台选择）：
+1. 读 `./references/deployment-guide.md`；从 `docs/architecture.md` 取项目名与平台，确认 `backend/`、`web/` 是否存在。
+2. 遥测（best-effort）：`phase_enter`（phase=deploy，skill=project-deploy）。
 
+---
+
+## 2. 生成 Dockerfiles / compose / CI
+
+`<skill-dir>` = 含本 SKILL.md 的目录。按项目平台从模板复制到项目 `docker/`：
 ```bash
 mkdir -p docker
-
-# Backend（Spring Boot）— 两阶段构建，非 root 用户，健康检查
-cp <skill-dir>/templates/docker/Dockerfile.backend docker/Dockerfile.backend
-
-# Web（Next.js）— 三阶段 standalone 构建，非 root 用户，健康检查
-cp <skill-dir>/templates/docker/Dockerfile.web docker/Dockerfile.web
+cp <skill-dir>/templates/docker/Dockerfile.backend docker/Dockerfile.backend   # 多阶段、非 root、健康检查
+cp <skill-dir>/templates/docker/Dockerfile.web      docker/Dockerfile.web       # standalone、非 root、健康检查
+cp <skill-dir>/templates/docker/docker-compose.yml  docker/docker-compose.yml
+cp <skill-dir>/templates/docker/.env.example        docker/.env.example
+mkdir -p .github/workflows && cp <skill-dir>/templates/github/ci.yml .github/workflows/ci.yml
 ```
-
-> 模板位于 `./templates/docker/`，已包含：多阶段构建 + 非 root 用户（安全最佳实践）+ 健康检查端点。
-> `<skill-dir>` 为本 SKILL 所在目录（即含此 SKILL.md 的目录）。
-
-如需定制：
-- 修改端口号（默认 8080 / 3000）
-- 修改健康检查路径（backend 默认 `/actuator/health`）
+将 `docker-compose.yml` 的 `{{project-name}}` 占位符替换为实际项目名；确保 `docker/.env` 已入 `.gitignore`。CI 模板含 `backend-test`(MySQL service)、`web-test`、`build-images`(main)，按实际平台删多余 job。
 
 ---
 
-## Step 2：生成 docker-compose.yml
+## 3. 生产 Checklist 与收尾
 
-```bash
-cp <skill-dir>/templates/docker/docker-compose.yml docker/docker-compose.yml
-cp <skill-dir>/templates/docker/.env.example docker/.env.example
-```
-
-将 `docker-compose.yml` 中的 `{{project-name}}` 占位符替换为实际项目名（使用 Edit 工具）。
-
-确保 `.env` 已加入 `.gitignore`：
-```bash
-grep -q "^docker/.env$" .gitignore || echo "docker/.env" >> .gitignore
-```
-
----
-
-## Step 3：生成 GitHub Actions CI 流水线
-
-```bash
-mkdir -p .github/workflows
-cp <skill-dir>/templates/github/ci.yml .github/workflows/ci.yml
-```
-
-> 模板包含三个 job：`backend-test`（含 MySQL 服务容器）、`web-test`、`build-images`（仅 main 分支）。
-> 根据项目实际平台，删除不需要的 job。
-
----
-
-## Step 4：生产环境 Checklist
-
-验证并与用户逐项确认：
-- [ ] 所有密码通过环境变量传入（无硬编码）
-- [ ] `docker/.env` 文件已加入 `.gitignore`
-- [ ] 容器使用非 root 用户运行（模板已内置）
-- [ ] 所有服务有健康检查端点（模板已内置）
-- [ ] `docker-compose config` 验证通过（执行此命令确认）
-
-执行验证：
-```bash
-docker compose -f docker/docker-compose.yml config
-```
-
-**持久化状态（project-state MCP）：** 配置验证通过后调用：
-```json
-{ "phase": "deploy" }
-```
-
-收尾提示：
-> "Docker 和 CI/CD 配置已生成。将 `.github/workflows/ci.yml` push 到 GitHub 后，每次 PR 将自动运行测试。
-> 生产部署时，请配置 `docker/.env` 文件中的真实密钥。"
+逐项与用户确认：密码全部走环境变量（无硬编码）、`docker/.env` 已 gitignore、容器非 root、各服务有健康检查、`docker compose -f docker/docker-compose.yml config` 通过。
+然后：
+1. 更新 `PROGRESS.md`（标记部署配置完成）。
+2. 遥测：`phase_complete`（phase=deploy，`--outcome ok`）。
+3. 提示：
+   > "Docker 与 CI/CD 配置已生成。push `.github/workflows/ci.yml` 后每次 PR 自动测试；生产部署前配置 `docker/.env` 真实密钥。"

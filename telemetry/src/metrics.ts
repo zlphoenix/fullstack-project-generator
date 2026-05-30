@@ -13,6 +13,7 @@ export interface Metrics {
   by_event_type: Record<string, number>;
   by_actor_role: Record<string, number>;
   by_project: Record<string, number>;
+  by_milestone: Record<string, number>;
   projects: string[];
   phase_cycle_time: Record<string, DurationStat>; // key: phase
   story_lead_time: DurationStat;
@@ -75,6 +76,7 @@ export function computeMetrics(events: TelemetryEvent[]): Metrics {
   const byType: Record<string, number> = {};
   const byRole: Record<string, number> = {};
   const byProject: Record<string, number> = {};
+  const byMilestone: Record<string, number> = {};
 
   let reworkCount = 0;
   let storyCompleted = 0;
@@ -86,6 +88,7 @@ export function computeMetrics(events: TelemetryEvent[]): Metrics {
     inc(byType, e.event_type);
     inc(byRole, e.actor_role);
     inc(byProject, e.project_id);
+    inc(byMilestone, e.milestone || "(none)");
     if (e.event_type === "story_reopen") reworkCount++;
     if (e.event_type === "story_complete") storyCompleted++;
     if (e.event_type === "contract_change") contractChanges++;
@@ -111,6 +114,7 @@ export function computeMetrics(events: TelemetryEvent[]): Metrics {
     by_event_type: byType,
     by_actor_role: byRole,
     by_project: byProject,
+    by_milestone: byMilestone,
     projects: Object.keys(byProject).sort(),
     phase_cycle_time: phaseCycle,
     story_lead_time: durationStat(allStoryDurations),

@@ -4,9 +4,8 @@ This file provides Claude-Code-specific guidance. **The canonical, cross-tool gu
 
 ## Quick reference (see AGENTS.md for full detail)
 
-- This repo is a collection of **Skills** (`skills/<name>/SKILL.md`) guiding AI-assisted fullstack development. No application code.
+- This repo is a collection of **Skills** (`skills/<name>/SKILL.md`) guiding AI-assisted fullstack development. No application code, **no Python** (see [ADR-013](docs/00-决策记录.md)).
 - Pipeline: `project-requirements → project-architecture → project-scaffold → sprint-plan → sprint-develop → project-qa → project-deploy`.
-- Verify the MCP service: `python3 scripts/project_state.py --test` → expect `✅ 所有测试通过！`
 - Verify telemetry: `cd telemetry && bun test`.
 
 ## Claude-Code-specific setup
@@ -14,28 +13,25 @@ This file provides Claude-Code-specific guidance. **The canonical, cross-tool gu
 Run the cross-tool installer (configures both Claude Code and Codex):
 
 ```bash
-bash scripts/install.sh --scope user --tools claude --dry-run   # preview
-bash scripts/install.sh --scope user --tools claude             # apply
+bash scripts/install.sh --project-dir <your-project> --tools claude --dry-run   # preview
+bash scripts/install.sh --project-dir <your-project> --tools claude             # apply
 ```
 
 What it configures for Claude Code:
-- **Skills**: symlinks each `skills/<name>/` into `~/.claude/skills/` (user scope) or `<project>/.claude/skills/` (project scope).
-- **MCP** (`project-state`) in `.claude/settings.local.json`:
-  ```json
-  { "mcpServers": { "project-state": {
-    "command": "python3",
-    "args": ["$FPG_HOME/scripts/project_state.py"],
-    "type": "stdio"
-  }}}
-  ```
+- **Skills**: symlinks each `skills/<name>/` into `<project>/.claude/skills/` (default, project scope) or `~/.claude/skills/` (optional user scope). Existing same-named skills are **not overwritten** (skipped with a warning).
+- **Project common files**: deploys `project-template/` into your project (the project-level `AGENTS.md` + platform references all Skills assume).
 - **Telemetry env** (`FPG_HOME`, `FPG_TELEMETRY_ENDPOINT`, `FPG_ACTOR_ROLE`, `FPG_TOOL=claude`) sourced from `~/.fpg-telemetry/env.sh`.
 
-Dependencies: `pip install mcp` (for the Python MCP) and Bun ≥ 1.1 (only for the telemetry collector/report, server side).
+Dependencies: `bash` + `curl` (Skills & telemetry client; **no Python**). Bun ≥ 1.1 only for the telemetry collector/report backend.
+
+## Cross-session progress (no MCP, no state file)
+
+There is **no `.project-state.json` and no MCP**. Each Skill derives "where the project is" from real artifacts — `docs/PRD.md`, `docs/sprint-N.md`, `PROGRESS.md`, and `git log` — and emits a telemetry event (user/role/time/skill/milestone/phase) via `telemetry/emit.sh`. Observability is centralized in `telemetry/`.
 
 ## Skill authoring conventions (Claude Code)
 
 - Frontmatter `name` + `description` drive trigger matching — keep descriptions specific, third-person, with trigger terms.
 - Keep `SKILL.md` body < 500 lines; split into `references/` and keep references one level deep.
-- Each Skill starts with a 前置检查 (reads `project-state` MCP) and ends with `write_project_state`.
+- Each Skill starts with a 前置检查 that reads project artifacts (not an MCP) and ends by updating those artifacts + `PROGRESS.md`.
 - `sprint-develop` is scoped to **1 Story × 1 platform** per invocation to avoid context overload.
-- Reference docs under `skills/shared/references/` load conditionally (only platforms involved).
+- Universal conventions all Skills assume live in the **project-level `AGENTS.md`** (deployed from `project-template/`); platform guides are project-level references.

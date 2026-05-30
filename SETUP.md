@@ -10,6 +10,6 @@
 一句话安装：
 
 ```bash
-bash scripts/install.sh --scope user --tools claude,codex --dry-run   # 预览
-bash scripts/install.sh --scope user --tools claude,codex             # 安装
+bash scripts/install.sh --project-dir <项目路径> --tools claude,codex --dry-run   # 预览
+bash scripts/install.sh --project-dir <项目路径> --tools claude,codex             # 安装
 ```

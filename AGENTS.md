@@ -16,10 +16,9 @@
 skills/<name>/SKILL.md      # 各阶段 Skill（被工具加载执行）
 skills/<name>/templates/    # 复制进用户项目的模板
 skills/<name>/scripts/      # Skill 调用的脚本
-skills/<name>/references/   # 执行时按需读取的参考（不复制）
-skills/shared/references/   # 跨 Skill 共享：方法论、平台指南、遥测埋点
-scripts/project_state.py    # project-state MCP（跨会话状态，Python FastMCP stdio）
-scripts/install.sh          # 跨工具安装（Claude Code + Codex）
+skills/<name>/references/   # 该 Skill 专属参考（不复制）
+project-template/           # 部署进用户项目的公共文件（目标 AGENTS.md + PROGRESS.md + references/）
+scripts/install.sh          # 跨工具安装/分发（Claude Code + Codex）
 telemetry/                  # 集中式遥测：emit.sh → collector(Bun) → report(Bun)
 docs/                       # 治理(决策/里程碑)、研究、规划、度量、分发、归档（编号+中文名）
 ```
@@ -48,31 +47,28 @@ project-requirements → project-architecture → project-scaffold
 ## 常用命令
 
 ```bash
-# 验证 MCP 状态服务
-python3 scripts/project_state.py --test          # 期望：✅ 所有测试通过！
-
-# 遥测子系统（需要 Bun ≥ 1.1）
+# 遥测子系统（需要 Bun ≥ 1.1；客户端 emit.sh 仅需 curl）
 cd telemetry && bun test                          # 单元测试
 cd telemetry && bun run collector                 # 启动中心收集器
 cd telemetry && bun run report --format md        # 生成运营报表
 
 # 跨工具安装（详见 docs/40-分发与部署指南.md）
-bash scripts/install.sh --scope user --tools claude,codex --dry-run
+bash scripts/install.sh --project-dir <项目路径> --tools claude,codex --dry-run
 ```
 
 ## 跨工具说明
 
-- **Claude Code**：从 `~/.claude/skills/`（用户级）或项目 `.claude/skills/` 发现 Skill；MCP 配置在 `.claude/settings.local.json`；启动入口 `CLAUDE.md`。
-- **Codex**：从 `~/.codex/skills/` 发现 Skill；MCP 配置在 `~/.codex/config.toml`；自动读取本 `AGENTS.md`。
-- 两者都通过 `scripts/install.sh` 统一配置。Skill 与 MCP 均为跨工具标准（`SKILL.md` + stdio MCP）。
+- **Claude Code**：从项目 `.claude/skills/`（默认）或 `~/.claude/skills/`（可选用户级）发现 Skill；启动入口 `CLAUDE.md`。
+- **Codex**：从项目 `.codex/skills/` 发现 Skill；自动读取本 `AGENTS.md`。
+- 两者都通过 `scripts/install.sh` 统一配置（软链 Skill，默认项目级、不覆盖同名）。`SKILL.md` 为跨工具标准。
+- **无 MCP / 无 Python**：跨会话进展由项目产物（PRD/sprint/PROGRESS/git）派生 + 遥测事件统一收集（见 [ADR-013](docs/00-决策记录.md)）。
 - 路径引用以 `$FPG_HOME`（仓库根，由 install.sh 设置）为准；**分发时必须保留完整目录结构**，不可只复制 `skills/` 子目录。
 
 ## 验证流程（改动后必跑）
 
-1. `python3 scripts/project_state.py --test` 通过。
-2. `cd telemetry && bun test` 通过。
-3. 改了某个 SKILL.md：确认正文 < 500 行、frontmatter 含 `name`+`description`、引用只下钻一层、无失效路径。
-4. 改了脚本：自带或更新对应测试。
+1. `cd telemetry && bun test` 通过。
+2. 改了某个 SKILL.md：确认正文 < 500 行、frontmatter 含 `name`+`description`、引用只下钻一层、无失效路径、无 Python/MCP 残留。
+3. 改了脚本：自带或更新对应测试。
 
 ---
 

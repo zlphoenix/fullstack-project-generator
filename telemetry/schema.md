@@ -14,6 +14,7 @@
 | `actor_id` | string | ⬜ | 不透明标识（建议哈希后的工号/邮箱），缺省 `anonymous` |
 | `tool` | enum | ✅ | `claude` \| `codex` \| `unknown`（运行的 Agent 工具） |
 | `project_id` | string | ✅ | 项目标识（建议用项目名 kebab-case） |
+| `milestone` | string | ⬜ | 项目当前里程碑（如 `M1`/`M2`/`Sprint-3`），用于"进展到哪"维度 |
 | `skill` | string | ⬜ | 触发的 Skill 名，如 `sprint-develop` |
 | `phase` | string | ⬜ | 阶段：`requirements`\|`architecture`\|`scaffold`\|`sprint_plan`\|`sprint_develop`\|`qa`\|`deploy` |
 | `event_type` | enum | ✅ | 见下表 |

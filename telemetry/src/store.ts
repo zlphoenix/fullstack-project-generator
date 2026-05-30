@@ -18,6 +18,7 @@ export class EventStore {
         actor_id       TEXT NOT NULL,
         tool           TEXT NOT NULL,
         project_id     TEXT NOT NULL,
+        milestone      TEXT,
         skill          TEXT,
         phase          TEXT,
         event_type     TEXT NOT NULL,
@@ -35,8 +36,8 @@ export class EventStore {
     const res = this.db
       .query(
         `INSERT OR IGNORE INTO events
-         (event_id, ts, schema_version, actor_role, actor_id, tool, project_id, skill, phase, event_type, outcome, attrs, received_at)
-         VALUES ($event_id,$ts,$schema_version,$actor_role,$actor_id,$tool,$project_id,$skill,$phase,$event_type,$outcome,$attrs,$received_at)`,
+         (event_id, ts, schema_version, actor_role, actor_id, tool, project_id, milestone, skill, phase, event_type, outcome, attrs, received_at)
+         VALUES ($event_id,$ts,$schema_version,$actor_role,$actor_id,$tool,$project_id,$milestone,$skill,$phase,$event_type,$outcome,$attrs,$received_at)`,
       )
       .run({
         $event_id: e.event_id,
@@ -46,6 +47,7 @@ export class EventStore {
         $actor_id: e.actor_id,
         $tool: e.tool,
         $project_id: e.project_id,
+        $milestone: e.milestone,
         $skill: e.skill,
         $phase: e.phase,
         $event_type: e.event_type,
@@ -79,6 +81,7 @@ export class EventStore {
       actor_id: row.actor_id as string,
       tool: row.tool as TelemetryEvent["tool"],
       project_id: row.project_id as string,
+      milestone: (row.milestone as string) ?? "",
       skill: row.skill as string,
       phase: row.phase as string,
       event_type: row.event_type as TelemetryEvent["event_type"],

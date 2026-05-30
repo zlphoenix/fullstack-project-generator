@@ -48,8 +48,9 @@ project-requirements → project-architecture → project-scaffold
 ## 快速开始
 
 ### 前置依赖
-- `python3` + `pip install mcp`（状态服务 `project-state` MCP）
-- `bun ≥ 1.1`（仅遥测收集器/报表需要；客户端埋点只需 `curl`）
+- `bash` + `curl`（SKILL 与遥测客户端 `emit.sh` 所需）
+- `bun ≥ 1.1`（仅遥测收集器/报表后端需要；客户端埋点只需 `curl`）
+- `python3`：**仅 M1 期间** `project-scaffold` / `project-architecture` 的脚手架脚本需要（M2 移植为 Bun 后即去除，见 [ADR-014](docs/00-决策记录.md)）
 
 ### 安装（同时配置 Claude Code 与 Codex）
 
@@ -57,11 +58,11 @@ project-requirements → project-architecture → project-scaffold
 git clone <repo-url> fullstack-project-generator
 cd fullstack-project-generator
 
-# 先预览将要做的更改
-bash scripts/install.sh --scope user --tools claude,codex --dry-run
+# 先预览将要做的更改（默认项目级，软链 Skill + 部署项目公共文件，不覆盖同名）
+bash scripts/install.sh --project-dir <你的项目路径> --tools claude,codex --dry-run
 
 # 确认无误后正式安装（按需替换遥测地址与角色）
-bash scripts/install.sh --scope user --tools claude,codex \
+bash scripts/install.sh --project-dir <你的项目路径> --tools claude,codex \
   --role dev --telemetry-endpoint https://telemetry.your-team.com
 ```
 
@@ -70,7 +71,6 @@ bash scripts/install.sh --scope user --tools claude,codex \
 ### 验证
 
 ```bash
-python3 scripts/project_state.py --test     # 期望：✅ 所有测试通过！
 (cd telemetry && bun test)                  # 期望：全部 pass
 ```
 
@@ -94,7 +94,7 @@ python3 scripts/project_state.py --test     # 期望：✅ 所有测试通过！
 你：配置 Docker 部署 → project-deploy
 ```
 
-各 Skill 自动读写 `project-state` 状态，并在关键时机发送遥测事件（best-effort，未配置则跳过）。
+各 Skill 从项目产物（PRD/sprint 文档/PROGRESS.md/git）派生当前进展，并在关键时机发送遥测事件（best-effort，未配置则跳过）。
 
 ---
 
@@ -117,8 +117,8 @@ bun run report --format md                         # 生成报表（返工率/�
 
 ```
 skills/<name>/        各阶段 Skill（SKILL.md + templates/ + references/ + scripts/）
-skills/shared/        跨 Skill 共享：方法论、平台指南、遥测埋点说明
-scripts/              project_state.py（MCP）、install.sh（跨工具安装）
+project-template/     部署进用户项目的公共文件：目标项目 AGENTS.md + PROGRESS.md + references/（方法论/平台指南/API 设计）
+scripts/              install.sh（跨工具安装/分发，软链 Skill + 部署项目公共文件）
 telemetry/            集中式遥测：emit.sh + collector(Bun) + report(Bun)
 docs/                 治理/研究/规划/度量/分发文档（编号+中文名，见 docs/AGENTS.md）
 AGENTS.md             面向所有 AI 工具的单一事实源

@@ -11,104 +11,46 @@ description: |
 
 # sprint-plan — Sprint 迭代计划
 
-**目标：** 从 PRD Backlog 中选取本次 Sprint 的 User Stories，生成详细的 Sprint 计划文档。
+**目标：** 从 PRD Backlog 选取本次 Sprint 的 User Stories，生成详细计划。
+**方法论依据：** `.fpg/references/methodology.md`（始终加载）。
 
-**方法论依据：** `../shared/references/methodology.md`（始终加载）
-
-> **遥测（可选）**：在开始/完成时按 `../shared/references/telemetry-points.md` 发送事件（best-effort；未配置 `FPG_HOME` 则跳过）。
-
----
-
-## 前置准备
-
-1. 读取 `../shared/references/methodology.md`（Sprint 规划方法论）
-2. 读取 `docs/PRD.md`（获取全部 User Stories 和优先级）
-3. 读取 `docs/sprint-*.md`（若存在，确定当前 Sprint 编号，自动递增）
-4. 读取 `api/openapi.yaml`（若存在，用于识别 API 变更）
-
-**状态读取（project-state MCP）：** 调用 `get_current_phase(project_dir)` — 若返回 `current_sprint > 0`，以该值 +1 作为本次 Sprint 编号（优先于文件系统扫描结果）；`output_dir` 字段即为项目根目录。
-
-**确定 Sprint 编号：** Sprint N = MCP 中 `current_sprint` + 1，首次为 Sprint 1
+> 以 Sprint 为最小交付周期（项目根 `AGENTS.md`）；通用约定与遥测同。
 
 ---
 
-## Step 1：Backlog 选取
+## 1. 前置准备（从产物确定进度）
 
-展示未分配 Sprint 的 User Stories，按 MoSCoW 排序，询问用户选择：
-
-**Sprint 1 建议（MVP 原则）：**
-- 选择 1-2 个核心 Must-Have Stories
-- 聚焦：用户认证 + 1 个主要业务实体的 CRUD
-
-**后续 Sprint：**
-- 优先完成剩余 Must-Have，再选 Should-Have
-
-每条 Story 预估：小（半天内）/ 中（1-2天）/ 大（需拆分）
-
-> 若 Story 过大（估计 > 2 天），建议拆分后再选入 Sprint。
+1. 读 `.fpg/references/methodology.md`、`docs/PRD.md`（全部 Story 与优先级）、`api/openapi.yaml`（若有）。
+2. **确定 Sprint 编号**：扫描 `docs/sprint-*.md`，取最大编号 +1（无则为 1）；并读 `PROGRESS.md` 确认已交付内容。
+3. 遥测（best-effort）：`phase_enter`（phase=sprint_plan，skill=sprint-plan，`--milestone Sprint-N`）。
 
 ---
 
-## Step 2：生成 Sprint 计划文档
+## 2. Backlog 选取
 
-读取模板：`./templates/sprint-plan-template.md`，填充：
-
-**Sprint 元信息：**
-```markdown
-Sprint 编号：N
-Sprint 目标：[一句话描述本次交付价值]
-选定 Stories：[Story ID 列表]
-```
-
-**每条 Story 详细展开：**
-
-```markdown
-### US-N-001: [Story 名称]
-**描述：** 作为 <角色>，我希望 <动作>，以便 <收益>
-
-**验收标准：**
-- Given <前置条件> / When <操作> / Then <预期结果>（至少 3 个场景）
-
-**任务分解（并行开发）：**
-| 平台 | 任务 | 预估 |
-|------|------|------|
-| Backend | Controller/Service/Repository 实现 | M |
-| iOS | ViewModel + View 实现 | M |
-| Android | ViewModel + Composable 实现 | M |
-| Web | 页面 + API 调用实现 | S |
-
-**API 变更：**（新增/修改的 endpoint）
-**DB 变更：**（新增表或字段）
-```
-
-**并行开发说明（依据 API 契约）：**
-```
-                API Contract (openapi.yaml)
-                         |
-           +-------------+-------------+
-           |             |             |
-       Backend       iOS/Android      Web
-       Sprint N      Sprint N       Sprint N
-```
-
-输出文件：`docs/sprint-N.md`（使用 Write 工具）
+展示未分配 Sprint 的 Story，按 MoSCoW 排序，与用户选定：
+- **Sprint 1（MVP）**：1–2 个核心 Must-Have（如：认证 + 1 个主要实体 CRUD）。
+- 后续：先完成剩余 Must-Have，再 Should-Have。
+- 每条估小/中/大；**> 2 天的先拆分**再入选（粒度按"人可一次审查"）。
 
 ---
 
-## Step 3：风险评估与收尾
+## 3. 生成 Sprint 计划文档
 
-列出本次 Sprint 的风险项（如：第三方 API 依赖、新技术点）。
+读取 `./templates/sprint-plan-template.md`，填充：
+- 元信息（编号、一句话目标、选定 Story 列表）。
+- 每条 Story：描述 + ≥3 个 Given/When/Then 场景 + **任务分解表**。
+- **并行分组（契约驱动）**：标注前置条件——前端∥后端（前置：API 契约确认）；测试仅当只依赖 AC（黑盒）时才独立并行（按上下文隔离，不按角色拆，见 `AGENTS.md`）。
+- **API 变更 / DB 变更**清单。
 
-**持久化状态（project-state MCP）：** Sprint 计划用户确认后调用：
-```json
-{
-  "phase": "sprint_plan",
-  "current_sprint": 1,
-  "sprint_stories": { "sprint-1": ["US-1-001", "US-1-002"] }
-}
-```
-（将本次 Sprint 所有 Story ID 写入 `sprint_stories`，供 sprint-develop 通过 `list_open_stories` 读取）
+输出 `docs/sprint-N.md`（Write 工具）。
 
-收尾提示：
-> "Sprint N 计划已保存至 docs/sprint-N.md。
-> 下一步请使用 **sprint-develop** SKILL 开始实现具体功能。"
+---
+
+## 4. 风险评估与收尾
+
+列出本 Sprint 风险（第三方依赖、新技术点）。然后：
+1. 更新 `PROGRESS.md`（当前里程碑=Sprint-N、目标、下一步=开发）。
+2. 遥测：`phase_complete`（phase=sprint_plan，`--milestone Sprint-N`，`--outcome ok`）。
+3. 提示：
+   > "Sprint N 计划已保存至 docs/sprint-N.md。下一步请使用 **sprint-develop** 实现具体功能（一次 1 Story × 1 平台）。"

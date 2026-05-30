@@ -11,117 +11,52 @@ description: |
 
 # project-qa — 质量保障与测试策略
 
-**目标：** 按测试金字塔生成各平台测试文件，确保关键路径有测试覆盖。
+**目标：** 按测试金字塔生成各平台测试文件，确保关键路径有覆盖。
+**测试策略参考：** `./references/testing-strategy.md`（始终加载）。
 
-**测试策略参考：** `./references/testing-strategy.md`（始终加载）
-
-> **遥测（可选）**：在开始/完成、以及测试结果（`verification` kind=test）时按 `../shared/references/telemetry-points.md` 发送事件（best-effort；未配置 `FPG_HOME` 则跳过）。
-
----
-
-## 前置准备
-
-**状态读取（project-state MCP）：** 调用 `get_current_phase(project_dir)` — 从 `current_sprint` 字段定位最新 `docs/sprint-N.md`；从 `platforms` 字段确认需要测试哪些平台（作为询问用户时的默认选项）。
-
-读取 `./references/testing-strategy.md`，然后：
-1. 读取 `api/openapi.yaml`（若存在），提取需要契约测试的 endpoint
-2. 读取最新 `docs/sprint-N.md`，从 Given/When/Then AC 推导测试场景
-3. 询问用户：聚焦哪个平台？还是全平台？
+> 通用约定与遥测见项目根 `AGENTS.md`。**验收应独立于实现**（生成者≠评估者）。
 
 ---
 
-## 测试金字塔规划
+## 1. 前置准备（从产物定位范围）
 
-| 层级 | 比例 | 覆盖范围 |
-|------|------|----------|
-| 单元测试 | 70% | 业务逻辑（Service、ViewModel、Repository） |
-| 集成测试 | 20% | API 端到端、数据库集成、组件交互 |
-| E2E 测试 | 10% | 关键用户流程（登录、核心业务场景） |
+1. 读 `./references/testing-strategy.md`、最新 `docs/sprint-N.md`（从 Given/When/Then 推导测试场景）、`api/openapi.yaml`（契约测试 endpoint）。
+2. 从 `docs/architecture.md` 的平台列表确认测哪些平台；询问用户聚焦单平台还是全平台。
+3. 遥测（best-effort）：`phase_enter`（phase=qa，skill=project-qa）。
 
 ---
 
-## 各平台测试生成
+## 2. 测试金字塔
 
-### Backend（Spring Boot）
-测试框架：JUnit 5 + Mockito + MockMvc + Testcontainers
-
-生成文件：
-1. `{Entity}ServiceImplTest.java`：
-   - 每个 Service 方法至少 2 个测试（正常路径 + 异常路径）
-   - 使用 `@ExtendWith(MockitoExtension.class)` + `@Mock`
-   - 命名规范：`methodName_condition_expectedResult`
-
-2. `{Entity}ControllerTest.java`：
-   - `@WebMvcTest` + MockMvc
-   - 测试：200 正常响应、400 参数校验失败、401/403 权限
-
-3. `{Entity}RepositoryTest.java`：
-   - `@DataJpaTest`，H2 内存数据库
-   - 测试自定义查询方法
-
-4. `IntegrationTest.java`（关键流程）：
-   - Testcontainers + MySQL
-   - 测试：用户注册→登录→业务操作完整链路
-
-验证命令：`mvn test`
-
-### iOS（Swift）
-测试框架：XCTest
-
-生成文件：
-1. `{Feature}ViewModelTests.swift`：
-   - MockService 注入
-   - 使用 `async/await` 测试异步方法
-   - 测试：成功加载、空数据、网络错误
-
-验证命令：Xcode → Product → Test
-
-### Android（Kotlin）
-测试框架：JUnit + Mockk + Coroutines Test
-
-生成文件：
-1. `{Feature}ViewModelTest.kt`：
-   - `@get:Rule val mainDispatcherRule = MainDispatcherRule()`
-   - `coEvery` + `coVerify` 测试协程
-
-2. `{Feature}ScreenTest.kt`（Compose UI）：
-   - `createComposeRule()`
-   - 测试关键 UI 元素和用户交互
-
-验证命令：`./gradlew test`
-
-### Web（Next.js）
-测试框架：Jest + React Testing Library + Playwright
-
-生成文件：
-1. `__tests__/{Component}.test.tsx`：
-   - RTL render + user interactions
-   - Mock API 调用
-
-2. `e2e/{flow}.spec.ts`（Playwright，仅关键流程）：
-   - 登录、核心业务流程
-
-验证命令：`npm test` / `npx playwright test`
+| 层级 | 比例 | 覆盖 |
+|---|---|---|
+| 单元 | 70% | Service / ViewModel / Repository 业务逻辑 |
+| 集成 | 20% | API 端到端、DB 集成、组件交互 |
+| E2E | 10% | 关键用户流程（登录、核心业务） |
 
 ---
 
-## API 契约测试
+## 3. 各平台测试生成（按需）
 
-对 `api/openapi.yaml` 中每个 endpoint 验证：
-- [ ] 对应的 Controller 测试存在
-- [ ] 请求/响应格式与规范一致
-- [ ] 401/403 场景已覆盖
+- **Backend**：JUnit5 + Mockito + MockMvc + Testcontainers。`{Entity}ServiceImplTest`（正常+异常）、`{Entity}ControllerTest`(`@WebMvcTest`，200/400/401)、`{Entity}RepositoryTest`(`@DataJpaTest`)、`IntegrationTest`（注册→登录→业务链路）。验证 `mvn test`。
+- **iOS**：XCTest，MockService，async；成功/空/错误。
+- **Android**：JUnit+Mockk+Coroutines Test（`MainDispatcherRule`）、Compose `createComposeRule()`。`./gradlew test`。
+- **Web**：Jest+RTL（mock API）、Playwright（仅关键流程）。`npm test` / `npx playwright test`。
 
 ---
 
-## 收尾
+## 4. 契约测试 + 验证回路
 
-运行测试并展示结果。
-
-**持久化状态（project-state MCP）：** 测试通过后调用：
-```json
-{ "phase": "qa" }
+对 `api/openapi.yaml` 每个 endpoint 核对：对应 Controller 测试存在、请求/响应格式一致、401/403 已覆盖。
+**验证回路**：跑测试 → 修失败 → 重跑，直到全绿。每轮发遥测：
+```bash
+[ -n "$FPG_HOME" ] && bash "$FPG_HOME/telemetry/emit.sh" --event-type verification \
+  --project <project_id> --phase qa --skill project-qa --outcome <ok|fail> --attrs '{"kind":"test"}'
 ```
 
-提示：
-> "测试已生成。若测试全部通过，使用 **project-deploy** SKILL 配置部署环境。"
+---
+
+## 5. 收尾
+
+更新 `PROGRESS.md`；遥测 `phase_complete`（phase=qa，`--outcome ok`）。提示：
+> "测试已生成并通过。下一步请使用 **project-deploy** 配置部署环境。"

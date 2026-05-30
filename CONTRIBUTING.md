@@ -19,7 +19,7 @@
 - **结构**：以"前置检查（读 `project-state` MCP）"开始，以"`write_project_state` 持久化"结束。
 - **自由度匹配脆弱度**：多解任务给文字指令；脆弱/需一致的操作给"照此命令执行，别改"的脚本。
 - **脚本**：解决问题而非甩锅给模型；显式错误处理；无 voodoo 常量（魔数要有注释）；路径用正斜杠；MCP 工具用全限定名。
-- **遥测**：新增 Skill 时在 `skills/shared/references/telemetry-points.md` 登记其埋点事件，并在 SKILL.md 加一行可选遥测说明。
+- **遥测**：新增 Skill 时在**目标项目模板 `project-template/AGENTS.md` §5** 的埋点表登记其事件点，并在 SKILL.md 关键时机调用 `$FPG_HOME/telemetry/emit.sh`（best-effort）。
 - **避免时效性信息**（用"old patterns"折叠承载历史）；术语全程一致。
 
 ## 三、评估先行（Evaluation-Driven）
@@ -33,7 +33,6 @@
 ## 四、提交前校验（必跑）
 
 ```bash
-python3 scripts/project_state.py --test          # 状态服务自测通过
 (cd telemetry && bun test)                        # 遥测单元测试通过
 ```
 
@@ -48,9 +47,9 @@ python3 scripts/project_state.py --test          # 状态服务自测通过
 
 ## 六、不要做
 
-- 不在未沟通时大改方法论内核（契约驱动、状态服务、单 Story×单平台、Sprint 迭代模式 [ADR-009](docs/00-决策记录.md)）。
-- 不把遥测埋进 `project_state.py`（遥测独立于状态服务，见架构决策）。
-- 不引入除 Java/TS 外的新开发语言。
+- 不在未沟通时大改方法论内核（契约驱动、单 Story×单平台、Sprint 迭代模式 [ADR-009](docs/00-决策记录.md)）。
+- **不再引入 Python**（[ADR-013](docs/00-决策记录.md)）；跨会话进展用项目产物派生 + 遥测事件，不要恢复 MCP/状态文件。
+- 不引入除 Java/TS 外的新开发语言；SKILL 客户端埋点仅用 shell+curl。
 - 不删除/弱化测试来"让它通过"。
 - **不按角色/工作类型拆分多 Agent**（[ADR-008](docs/00-决策记录.md)）：按可隔离的上下文拆分，先单 Agent 后多 Agent，验收与生成分离。
 - **harness 不要只增不减**：每个编排/工件组件都要标注"替模型补了什么能力"，随模型升级定期复审、剥离不再承重的组件。

@@ -6,7 +6,7 @@
 #          永不让宿主 Skill 失败（始终 exit 0）、网络不可达时离线缓冲、下次补传。
 #
 # 用法：
-#   emit.sh --event-type story_complete --project my-app --skill sprint-develop \
+#   emit.sh --event-type story_complete --project my-app --milestone M1 --skill sprint-develop \
 #           --phase sprint_develop --outcome ok --attrs '{"story":"US-1-001","platform":"backend"}'
 #
 # 配置（环境变量，建议写入 shell profile 或 .claude/.codex 配置）：
@@ -31,11 +31,12 @@ TOOL="${FPG_TOOL:-unknown}"
 QUEUE_DIR="${FPG_TELEMETRY_QUEUE:-$HOME/.fpg-telemetry/queue}"
 
 # —— 解析参数 ——
-EVENT_TYPE=""; PROJECT=""; SKILL=""; PHASE=""; OUTCOME=""; ATTRS="{}"
+EVENT_TYPE=""; PROJECT=""; MILESTONE=""; SKILL=""; PHASE=""; OUTCOME=""; ATTRS="{}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --event-type) EVENT_TYPE="$2"; shift 2;;
     --project)    PROJECT="$2"; shift 2;;
+    --milestone)  MILESTONE="$2"; shift 2;;
     --skill)      SKILL="$2"; shift 2;;
     --phase)      PHASE="$2"; shift 2;;
     --outcome)    OUTCOME="$2"; shift 2;;
@@ -69,7 +70,7 @@ case "$ATTRS" in
 esac
 
 PAYLOAD=$(cat <<JSON
-{"schema_version":1,"event_id":"$(_json_escape "$EVENT_ID")","ts":"$TS","actor_role":"$(_json_escape "$ROLE")","actor_id":"$(_json_escape "$ACTOR")","tool":"$(_json_escape "$TOOL")","project_id":"$(_json_escape "$PROJECT")","skill":"$(_json_escape "$SKILL")","phase":"$(_json_escape "$PHASE")","event_type":"$(_json_escape "$EVENT_TYPE")","outcome":$OUTCOME_JSON,"attrs":$ATTRS}
+{"schema_version":1,"event_id":"$(_json_escape "$EVENT_ID")","ts":"$TS","actor_role":"$(_json_escape "$ROLE")","actor_id":"$(_json_escape "$ACTOR")","tool":"$(_json_escape "$TOOL")","project_id":"$(_json_escape "$PROJECT")","milestone":"$(_json_escape "$MILESTONE")","skill":"$(_json_escape "$SKILL")","phase":"$(_json_escape "$PHASE")","event_type":"$(_json_escape "$EVENT_TYPE")","outcome":$OUTCOME_JSON,"attrs":$ATTRS}
 JSON
 )
 

@@ -28,6 +28,7 @@ export interface TelemetryEvent {
   actor_id: string;
   tool: Tool;
   project_id: string;
+  milestone: string;
   skill: string;
   phase: string;
   event_type: EventType;
@@ -80,6 +81,7 @@ export function validateEvent(raw: unknown): ValidationResult {
     actor_id: String(r.actor_id ?? "anonymous"),
     tool,
     project_id,
+    milestone: String(r.milestone ?? ""),
     skill: String(r.skill ?? ""),
     phase: String(r.phase ?? ""),
     event_type: event_type as EventType,
