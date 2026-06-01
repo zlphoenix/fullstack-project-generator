@@ -121,7 +121,7 @@ deploy_common() {
   # 团队文件：已存在不覆盖
   for f in AGENTS.md PROGRESS.md; do
     if [ -e "$PROJECT_DIR/$f" ]; then
-      warn "跳过 $f：项目已存在（不覆盖；如需更新请手动对比 $FPG_HOME/project-template/$f）"
+      warn "跳过 ${f}：项目已存在（不覆盖；如需更新请手动对比 ${FPG_HOME}/project-template/${f}）"
     else
       run "cp '$FPG_HOME/project-template/$f' '$PROJECT_DIR/$f'"
     fi
