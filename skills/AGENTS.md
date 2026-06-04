@@ -22,7 +22,7 @@ skills/<name>/
 - **frontmatter** 必含 `name`（小写+连字符，不含保留字）与 `description`（第三人称，做什么+何时用+触发词）。
 - **渐进式披露**：`SKILL.md` 正文 **< 500 行**；专属细节拆到 `references/`，引用**只下钻一层**。
 - **无 MCP / 无状态文件**（[ADR-013](../docs/00-决策记录.md)）：前置检查从**项目产物**（PRD/sprint/PROGRESS/git）判断进度；收尾**更新产物 + `PROGRESS.md`**，不写 `.project-state.json`。
-- **范围**：`sprint-develop` 严格 **1 Story × 1 平台**。
+- **范围**：`sprint-develop` 严格 **1 Task × 1 平台/上下文边界**；Story 是需求粒度，Task 是执行粒度。
 - **遥测**：在关键时机调用 `$FPG_HOME/telemetry/emit.sh`（best-effort、shell+curl，未配置则跳过）；事件点登记在目标项目 `AGENTS.md` §5 与 `telemetry/schema.md`。
 - **多 Agent**：按上下文拆分、不按角色；生成者≠评估者（[ADR-008](../docs/00-决策记录.md)）。
 - **脚本**：M1 客户端仅 shell+curl；不再引入 Python（现存 init/contract 待 M2 移植）；路径正斜杠、显式错误处理、无魔数。

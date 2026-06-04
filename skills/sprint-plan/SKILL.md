@@ -6,13 +6,13 @@ description: |
   触发场景：「计划Sprint」「这个Sprint做什么」「sprint planning」「下一个迭代」「规划功能」
   「sprint计划」「迭代计划」「backlog」「user stories」「任务分解」「plan sprint」。
   前置条件：docs/PRD.md 必须存在，建议同时有 api/openapi.yaml。
-  输出：docs/sprint-N.md（含 Stories、Given/When/Then AC、多平台任务分解、API 变更清单）。
+  输出：docs/iteration/epics/E###-*/sprints/S###-*/plan.md（含 Stories、Given/When/Then AC、Task 分解、并行边界、指标字段、API 变更清单）。
 ---
 
 # sprint-plan — Sprint 迭代计划
 
 **目标：** 从 PRD Backlog 选取本次 Sprint 的 User Stories，生成详细计划。
-**方法论依据：** `.fpg/references/methodology.md`（始终加载）。
+**方法论依据：** `.fpg/references/methodology.md` 与 `.fpg/references/iteration-governance.md`（始终加载）。
 
 > 以 Sprint 为最小交付周期（项目根 `AGENTS.md`）；通用约定与遥测同。
 
@@ -20,9 +20,10 @@ description: |
 
 ## 1. 前置准备（从产物确定进度）
 
-1. 读 `.fpg/references/methodology.md`、`docs/PRD.md`（全部 Story 与优先级）、`api/openapi.yaml`（若有）。
-2. **确定 Sprint 编号**：扫描 `docs/sprint-*.md`，取最大编号 +1（无则为 1）；并读 `PROGRESS.md` 确认已交付内容。
-3. 遥测（best-effort）：`phase_enter`（phase=sprint_plan，skill=sprint-plan，`--milestone Sprint-N`）。
+1. 读 `.fpg/references/methodology.md`、`.fpg/references/iteration-governance.md`、`docs/PRD.md`（全部 Story 与优先级）、`api/openapi.yaml`（若有）。
+2. 读 `docs/iteration/plan.md`（若有）与 `PROGRESS.md` 确认已交付内容；若项目仍只有 `docs/sprint-N.md`，兼容读取但新计划优先采用 E/S/T 目录结构。
+3. **确定编号**：选定或创建 Epic `E###`；在该 Epic 下扫描 `sprints/S###-*` 取最大编号 +1；Task 在 Sprint 内从 `T001` 递增。用户输入 `e1-s2-t5` 这类短编号时，先按 `.fpg/references/iteration-governance.md` 归一化为 `E001/S002/T005`。
+4. 遥测（best-effort）：`phase_enter`（phase=sprint_plan，skill=sprint-plan，`--milestone E###/S###`）。
 
 ---
 
@@ -32,18 +33,31 @@ description: |
 - **Sprint 1（MVP）**：1–2 个核心 Must-Have（如：认证 + 1 个主要实体 CRUD）。
 - 后续：先完成剩余 Must-Have，再 Should-Have。
 - 每条估小/中/大；**> 2 天的先拆分**再入选（粒度按"人可一次审查"）。
+- 按 `.fpg/references/iteration-governance.md` 先标出 Must Deliver、Must Verify、Supporting、Backlog；Must Deliver 必须是编码或可运行交付，且排在关键路径最前。
+- 计划/拆分/目录准备预算不超过本 Sprint 估计 token 的 10%-15%；超限后停止规划，进入 Must Deliver。
 
 ---
 
 ## 3. 生成 Sprint 计划文档
 
-读取 `./templates/sprint-plan-template.md`，填充：
-- 元信息（编号、一句话目标、选定 Story 列表）。
-- 每条 Story：描述 + ≥3 个 Given/When/Then 场景 + **任务分解表**。
+按 `.fpg/references/iteration-governance.md` 生成或更新：
+- `docs/iteration/plan.md`：Epic 清单与 Epic 级汇总指标。
+- `docs/iteration/epics/E###-name/plan.md`：Epic 目标、范围、Sprint 清单、Sprint 关键路径分类、Sprint 依赖图与指标。
+- `docs/iteration/epics/E###-name/sprints/S###-name/plan.md`：Sprint 计划、Task 清单、Task 关键路径分类、Task 依赖图、并行边界、验收标准与指标。
+- 每个 Task 目录：`tasks/T###-name/plan.md`、`worklog.md`、`smoke-report.md`、`evidence/`。
+
+Sprint `plan.md` 填充：
+- 元信息（E/S 编号、一句话目标、选定 Story 列表）。
+- 每条 Story：描述 + ≥3 个 Given/When/Then 场景 + **Task 分解表**。
+- 每个 Task：目标、输入、允许/禁止修改范围、验收标准、估计 token、证据路径。
+- **关键路径表**：明确 Must Deliver、Must Verify、Supporting、Backlog；预计 < 1 小时或 < 10k token 的 smoke/schema/report/check 合并为验收步骤，不建完整 Task 目录。
+- **依赖与并行甬道图**：用 Mermaid 表示直接下级依赖；Epic `plan.md` 画 Sprint 关系，Sprint `plan.md` 画 Task 关系。清单和图必须表达同一组直接子级。
+- **状态初始化**：新建 Epic/Sprint/Task 行时状态为 `未开始`；若明确不进入当前 Sprint/Epic，状态为 `搁置` 并写明原因。所有状态只写对应层级 `plan.md` 的直接下级清单。
 - **并行分组（契约驱动）**：标注前置条件——前端∥后端（前置：API 契约确认）；测试仅当只依赖 AC（黑盒）时才独立并行（按上下文隔离，不按角色拆，见 `AGENTS.md`）。
+- **指标字段**：创建时间、开始时间、结束时间、主动耗时、等待耗时、估计Token、实际Token、偏差原因、证据。
 - **API 变更 / DB 变更**清单。
 
-输出 `docs/sprint-N.md`（Write 工具）。
+不要新增同级 `INDEX.md`，不要在多个文件复制同一层级的状态/token/耗时清单。若旧项目需要保留 `docs/sprint-N.md`，只写新 `plan.md` 的链接和迁移说明。
 
 ---
 
@@ -51,6 +65,7 @@ description: |
 
 列出本 Sprint 风险（第三方依赖、新技术点）。然后：
 1. 更新 `PROGRESS.md`（当前里程碑=Sprint-N、目标、下一步=开发）。
-2. 遥测：`phase_complete`（phase=sprint_plan，`--milestone Sprint-N`，`--outcome ok`）。
-3. 提示：
-   > "Sprint N 计划已保存至 docs/sprint-N.md。下一步请使用 **sprint-develop** 实现具体功能（一次 1 Story × 1 平台）。"
+2. 回填对应 Epic/Sprint `plan.md` 的创建时间、估计 token 与 `未开始` 状态；确认 `docs/iteration/plan.md` 只保留 Epic 汇总。
+3. 遥测：`phase_complete`（phase=sprint_plan，`--milestone E###/S###`，`--outcome ok`）。
+4. 提示：
+   > "Sprint 计划已保存至 docs/iteration/epics/E###-.../sprints/S###-.../plan.md。下一步请使用 **sprint-develop** 实现具体 Task（一次 1 Task × 1 平台/上下文边界）。"

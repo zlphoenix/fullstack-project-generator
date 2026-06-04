@@ -10,7 +10,7 @@
 | `PROGRESS.md` | 项目根 `PROGRESS.md` | 团队文件（已存在则不覆盖） |
 | `references/*.md` | `<项目>/.fpg/references/`（软链） | 生成器管理，随仓库更新 |
 
-`AGENTS.md` 承载**所有 SKILL 通用**的约定（行为准则、契约先行、多 Agent 拆分、验收分层、遥测埋点、进度从产物派生）。SKILL 专属内容放在各自 `skills/<name>/references/`。
-平台指南/方法论/API 设计放在 `references/`，被多个 SKILL 以 `.fpg/references/...` 引用。
+`AGENTS.md` 承载**所有 SKILL 通用**的约定（行为准则、契约先行、迭代治理、多 Agent 拆分、验收分层、遥测埋点、进度从产物派生）。SKILL 专属内容放在各自 `skills/<name>/references/`。
+平台指南/方法论/API 设计/迭代治理放在 `references/`，被多个 SKILL 以 `.fpg/references/...` 引用。
 
 修改约定见仓库根 [../CONTRIBUTING.md](../CONTRIBUTING.md) 与 [../AGENTS.md](../AGENTS.md)。

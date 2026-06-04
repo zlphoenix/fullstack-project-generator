@@ -6,8 +6,9 @@
 
 ## 0. 本项目怎么运作
 - **迭代模式**：以 **Sprint** 为最小交付周期；每个迭代结束做回顾，用遥测观测指标评估并持续改进。
+- **迭代治理**：采用 **Epic(E) → Sprint(S) → Task(T)**；每级 `plan.md` 是唯一计划、直接子项清单、状态与耗时/token 指标真源，详见 `.fpg/references/iteration-governance.md`。
 - **契约先行**：先定 PRD → 架构 → API 契约（`api/openapi.yaml`），再并行开发；契约锁定后前后端/多端可并行。
-- **进展从产物派生（无状态文件、无 MCP）**：当前进展由项目真实产物判断——`docs/PRD.md`、`docs/sprint-N.md`、`PROGRESS.md`、`git log`。**新会话/新成员开始前，先读这些产物确定"做到哪了"。**
+- **进展从产物派生（无状态文件、无 MCP）**：当前进展由项目真实产物判断——`docs/PRD.md`、`docs/iteration/**/plan.md`、`PROGRESS.md`、`git log`；旧项目兼容 `docs/sprint-N.md`。**新会话/新成员开始前，先读这些产物确定"做到哪了"。**
 
 ## 1. 行为准则（降低常见 LLM 编码错误）
 1. **先思考再编码**：不臆测、不掩盖困惑；多解读时列出来再选；不清楚就停下提问。
@@ -23,8 +24,9 @@
 
 ## 3. 需求与拆分
 - User Story 满足 INVEST；验收标准用 Given/When/Then；优先级用 MoSCoW（Must ~60%）。
-- Story 粒度按"人可一次审查"切；开发**一次 1 Story × 1 平台**。
+- Story 粒度按"人可一次审查"切；执行粒度按 Task 管理。
 - 方法论细节见 `.fpg/references/methodology.md`。
+- Sprint 执行粒度按 Task 管理；开发一次 1 Task × 1 平台/上下文边界，Task 的过程记录和验收证据写入自己的目录。
 
 ## 4. 技术栈与平台规范
 | 平台 | 规范参考 |
@@ -34,6 +36,7 @@
 | iOS (SwiftUI) | `.fpg/references/ios-guide.md` |
 | Android (Compose) | `.fpg/references/android-guide.md` |
 | API 设计 | `.fpg/references/api-design.md` |
+| 迭代治理 | `.fpg/references/iteration-governance.md` |
 
 > 实现必须与 `api/openapi.yaml` 契约一致；契约变更先改契约、记 CHANGELOG，再改代码。
 
@@ -66,4 +69,4 @@
 > 隐私：只采流程元数据，不采代码/PII；可 `FPG_TELEMETRY_DISABLED=1` 关闭。度量用于改进，不作个人考核。
 
 ## 6. 进度文件 PROGRESS.md
-长程开发用 `PROGRESS.md` 做结构化笔记：记录已完成功能、当前进行项、未决问题、下一步。新会话先读它 + 跑端到端冒烟，再开始新功能。
+长程开发用 `PROGRESS.md` 做结构化笔记：记录已完成功能、当前进行项、未决问题、下一步。新会话先读它 + 最新 E/S/T `plan.md` + 跑端到端冒烟，再开始新功能。
