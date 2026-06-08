@@ -20,10 +20,19 @@ description: |
 
 ## 1. 前置准备（从产物确定进度）
 
-1. 读 `.fpg/references/methodology.md`、`.fpg/references/iteration-governance.md`、`docs/PRD.md`（全部 Story 与优先级）、`api/openapi.yaml`（若有）。
+1. 读 `.fpg/references/methodology.md`、`.fpg/references/iteration-governance.md`、`.fpg/references/epic-termination-contract.md`、`docs/PRD.md`（全部 Story 与优先级）、`api/openapi.yaml`（若有）。
 2. 读 `docs/iteration/plan.md`（若有）与 `PROGRESS.md` 确认已交付内容；若项目仍只有 `docs/sprint-N.md`，兼容读取但新计划优先采用 E/S/T 目录结构。
 3. **确定编号**：选定或创建 Epic `E###`；在该 Epic 下扫描 `sprints/S###-*` 取最大编号 +1；Task 在 Sprint 内从 `T001` 递增。用户输入 `e1-s2-t5` 这类短编号时，先按 `.fpg/references/iteration-governance.md` 归一化为 `E001/S002/T005`。
 4. 遥测（best-effort）：`phase_enter`（phase=sprint_plan，skill=sprint-plan，`--milestone E###/S###`）。
+
+### 1.1 Epic 灵魂拷问闸门（新建/重启 Epic 时必过，答不出即阻塞）
+
+新建或重启一个 Epic 时，进入 Backlog 选取与 Sprint 拆分**之前**，按 `templates/plan-premortem-checklist.md` 逐条回答 7 条灵魂拷问（DoD 现实性、pre-mortem、最硬外部依赖、范围反向定义、最小可证伪切片、证据真实性边界、杀死条件）。
+
+- **每条答案必须是具体产物/事实/路径，不是 yes/no**；任一条只能给 yes/no 或「会想清楚」式回答 → **阻塞**，回到 `project-requirements`/`project-architecture` 澄清，不得开始拆分。
+- 第 2 条 pre-mortem 尽量由生成者以外的视角过一遍（独立会话/子 Agent/人）。
+- 7 条答案中第 1/3/4/7 条直接写入 Epic `plan.md`「终止契约」区块（见 §3 与 `epic-termination-contract.md`），一次问答同时产出契约。
+- 仅在已存在 Epic 下新增 Sprint（非新建/重启 Epic）时，跳过本闸门，但仍按「范围守卫」核对新 Sprint 能追溯到某条 Epic 成功标准。
 
 ---
 
@@ -42,7 +51,7 @@ description: |
 
 按 `.fpg/references/iteration-governance.md` 生成或更新：
 - `docs/iteration/plan.md`：Epic 清单与 Epic 级汇总指标。
-- `docs/iteration/epics/E###-name/plan.md`：Epic 目标、范围、Sprint 清单、Sprint 关键路径分类、Sprint 依赖图与指标。
+- `docs/iteration/epics/E###-name/plan.md`：Epic 目标、范围、Sprint 清单、Sprint 关键路径分类、Sprint 依赖图与指标。**新建 Epic 必须按 `epic-termination-contract.md` §2 写入「终止契约」区块**（不可变 DoD 绑定真实用户结果、Sprint/Token 预算上限、退出场景、明确不做 out-of-scope、最硬外部依赖与责任人）；缺契约不得进入 Sprint 拆分。Sprint 清单每行新增「追溯成功标准」列，追溯不到或属 out-of-scope 的 Sprint 不立项。
 - `docs/iteration/epics/E###-name/sprints/S###-name/plan.md`：Sprint 计划、Task 清单、Task 关键路径分类、Task 依赖图、并行边界、验收标准与指标。
 - 每个 Task 目录：`tasks/T###-name/plan.md`、`worklog.md`、`smoke-report.md`、`evidence/`。
 

@@ -23,7 +23,9 @@ description: |
 长程开发每次会话先恢复上下文、确认现状没坏，再写新代码（对抗"上下文焦虑/过早完成"）：
 
 1. 读 `PROGRESS.md`（已完成/进行中/未决/下一步）+ `git log --oneline -10`。
-2. 读 `.fpg/references/iteration-governance.md`、最新 `docs/iteration/epics/E###-*/sprints/S###-*/plan.md`（Task 清单、Story、Given/When/Then、并行边界）与 `api/openapi.yaml`（契约）。旧项目兼容读取 `docs/sprint-N.md`。
+2. 读 `.fpg/references/iteration-governance.md`、`.fpg/references/epic-termination-contract.md`、最新 `docs/iteration/epics/E###-*/sprints/S###-*/plan.md`（Task 清单、Story、Given/When/Then、并行边界）与 `api/openapi.yaml`（契约）。旧项目兼容读取 `docs/sprint-N.md`。
+   - **终止契约核对（必做，先于动手）**：读 Epic `plan.md` 的「终止契约」区块，确认 (a) 本 Task 能追溯到某条退出场景/成功标准（答不出即非关键路径，停）；(b) 未触及 Sprint/Token 预算硬上限（计划 × 1.2，触及即 STOP 升级人类 re-baseline）；(c) 不属于 out-of-scope 清单；(d) 本 Task 阻塞于无法获得的外部依赖时，标 `blocked-external` → 停 + 升级，**禁止派生相邻脚手架**（preflight/evidence/safety gate/dry-run/分类器）。
+   - **无进展熔断**：若连续 2 个 Sprint 未让任一退出场景从红转绿（只产出文档/测试/脚手架），停止并升级人类，不得自我授权下一个 Sprint。
 3. **跑一次端到端冒烟**确认现有功能可编译/可运行（后端 `mvn -q compile` 或 `bun run`；前端 `build`）。失败先修复或记入 `PROGRESS.md`，再开始新功能。
 4. **确定本次范围**：从 Sprint `plan.md` 未完成 Task 中，与用户确认**实现哪个 Task、在哪个平台/上下文边界**。若用户输入 `e1-s1-t5`、`t5` 等短编号，先按 `.fpg/references/iteration-governance.md` 归一化并扫描匹配目录；匹配多个候选时先确认。启动前必须核对 Task 清单和 Mermaid 依赖图：前置已满足、冲突文件已标出、总账负责人唯一。确认后在 Sprint `plan.md` 的 Task 行把状态改为 `执行中`，回填开始时间。
 5. **遥测**（best-effort，未配置 `FPG_HOME` 则跳过）：
@@ -52,6 +54,8 @@ description: |
 - smoke、schema、report、check 这类小工作优先作为当前 Task 的验收步骤完成，不升级成独立交付。
 - 验证任务只能服务于判断“主交付是否可用”；不能以验证框架完成替代产品能力交付。
 - token 或时间吃紧时，按顺序保留：可运行代码、最小验证、必要记录；完整文档、扩展场景、性能和治理项转入 Backlog。
+- **mock / 结构同构 / 单测通过不构成 Epic DoD**；Epic 收口必须由「终止契约」里绑定真实用户结果的退出场景全绿决定（见 `epic-termination-contract.md`）。
+- **闸门 no-go 归因**：区分内部可修 / 外部不可得 / 范围外；外部不可得走 §1 升级，**不得用「再来一个 Sprint」消化**，更不得为刷绿闸门放宽契约或跳过负向场景。
 
 ---
 

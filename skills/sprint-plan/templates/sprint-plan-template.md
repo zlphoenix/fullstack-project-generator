@@ -98,11 +98,21 @@ flowchart LR
 
 ---
 
-## Sprint 评审检查项
+## Sprint 评审检查项（每项填证据，不填勾）
 
-- [ ] 所有 Story 验收标准通过
-- [ ] API 契约与 OpenAPI 文档同步
-- [ ] 后端单元测试覆盖新增代码
-- [ ] 客户端可正常调用新 API
-- [ ] 无新增安全漏洞
-- [ ] 代码已提交并通过 CI
+> 自评式是/否清单会被 100% 通过。本表每行必须填**具体证据/路径/命令输出**，填不出即视为未过。
+
+| 检查项 | 证据（命令/路径/输出，不接受"是"） |
+|---|---|
+| 本 Sprint 让 Epic 哪条退出场景从红转绿 | <写明哪条退出场景 + 证据；答"无"则本 Sprint 未推进交付状态> |
+| Story 验收标准逐条通过 | <每条 AC 对应的测试/运行证据路径> |
+| API 契约与 OpenAPI 同步 | <契约 diff / CHANGELOG 链接> |
+| prompt/agent 行为类改动有真实场景证据 | <redacted provider payload / golden case 链接；mock 不算真实> |
+| 证据级别符合 Epic「证据真实性边界」 | <声明类型 → 实际证据级别对照> |
+| 代码已提交并通过 CI | <commit / CI run 链接> |
+
+### 范围与止损自检（对照 Epic 终止契约）
+
+- [ ] 本 Sprint 可追溯到 Epic 某条成功标准（追溯不到 → 不应立项，见 `epic-termination-contract.md`）。
+- [ ] 未触及 Epic Sprint/Token 预算硬上限（计划 × 1.2）。
+- [ ] 无 `blocked-external`：若阻塞于无法获得的外部依赖，已停并升级，未派生相邻脚手架。
