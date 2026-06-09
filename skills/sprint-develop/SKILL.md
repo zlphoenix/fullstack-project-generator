@@ -5,14 +5,14 @@ description: |
   当用户需要实现某个功能、编写特定平台的代码、推进当前 Sprint 任务时使用。
   触发场景：「实现XX功能」「开发用户管理」「implement US-001」「写代码」「开始开发」
   「帮我写后台代码」「generate code」「实现登录」「开发这个功能」「coding」「写接口」。
-  每次调用实现：一个 Task × 一个平台/上下文边界（避免上下文过载）。
+  每次调用实现：一个上下文切片（一个平台/上下文边界，可含同边界多个清单 Task），避免上下文过载。
   前置条件：当前 Sprint 计划文档（docs/iteration/.../S###/plan.md 或 docs/sprint-N.md）+ api/openapi.yaml 必须存在。
 ---
 
 # sprint-develop — Sprint 功能代码实现
 
 **目标：** 严格按 Sprint 计划与 OpenAPI 契约实现代码，遵循各平台架构规范。
-**范围限定：每次调用只实现 1 个 Task × 1 个平台/上下文边界。**
+**范围限定：每次调用实现 1 个上下文切片＝1 个平台/上下文边界（可含该边界内多个清单 Task），不机械按单 Task 拆调用，以摊薄重复上下文加载。**
 
 > 通用约定（行为准则、契约先行、多 Agent 拆分、遥测）见项目根 `AGENTS.md`；方法论见 `.fpg/references/methodology.md`；迭代治理见 `.fpg/references/iteration-governance.md`。
 
@@ -27,7 +27,7 @@ description: |
    - **终止契约核对（必做，先于动手）**：读 Epic `plan.md` 的「终止契约」区块，确认 (a) 本 Task 能追溯到某条退出场景/成功标准（答不出即非关键路径，停）；(b) 未触及 Sprint/Token 预算硬上限（计划 × 1.2，触及即 STOP 升级人类 re-baseline）；(c) 不属于 out-of-scope 清单；(d) 本 Task 阻塞于无法获得的外部依赖时，标 `blocked-external` → 停 + 升级，**禁止派生相邻脚手架**（preflight/evidence/safety gate/dry-run/分类器）。
    - **无进展熔断**：若连续 2 个 Sprint 未让任一退出场景从红转绿（只产出文档/测试/脚手架），停止并升级人类，不得自我授权下一个 Sprint。
 3. **跑一次端到端冒烟**确认现有功能可编译/可运行（后端 `mvn -q compile` 或 `bun run`；前端 `build`）。失败先修复或记入 `PROGRESS.md`，再开始新功能。
-4. **确定本次范围**：从 Sprint `plan.md` 未完成 Task 中，与用户确认**实现哪个 Task、在哪个平台/上下文边界**。若用户输入 `e1-s1-t5`、`t5` 等短编号，先按 `.fpg/references/iteration-governance.md` 归一化并扫描匹配目录；匹配多个候选时先确认。启动前必须核对 Task 清单和 Mermaid 依赖图：前置已满足、冲突文件已标出、总账负责人唯一。确认后在 Sprint `plan.md` 的 Task 行把状态改为 `执行中`，回填开始时间。
+4. **确定本次范围**：从 Sprint `plan.md` 未完成 Task 中，与用户确认**本次实现哪个上下文切片（哪个平台/上下文边界）**；同边界的多个清单 Task 一并纳入本切片，减少重复上下文加载。若用户输入 `e1-s1-t5`、`t5` 等短编号，先按 `.fpg/references/iteration-governance.md` 归一化并扫描匹配目录；匹配多个候选时先确认。启动前必须核对 Task 清单和 Mermaid 依赖图：前置已满足、冲突文件已标出、总账负责人唯一。确认后在 Sprint `plan.md` 的 Task 行把状态改为 `执行中`，回填开始时间。
 5. **遥测**（best-effort，未配置 `FPG_HOME` 则跳过）：
    ```bash
    [ -n "$FPG_HOME" ] && bash "$FPG_HOME/telemetry/emit.sh" --event-type story_start \
@@ -100,7 +100,7 @@ description: |
 
 > 没有状态文件/MCP；进展靠**真实产物**承载，供下次会话/他人接续。
 
-1. 更新 Task 目录：`worklog.md` 记录过程，`smoke-report.md` 记录验证命令、pass/fail/blocked、证据、实际 token 与偏差原因；一次性日志/截图/脱敏样例放入 `evidence/`，可复用脚本、fixture、golden case 放到项目测试或脚本目录并在报告中链接。
+1. 更新 **Sprint 级**文档（默认不建 Task 目录）：`worklog.md` 按 Task 分节记录过程，`smoke-report.md` 按 Task/场景记录验证命令、pass/fail/blocked、证据、实际 token 与偏差原因；一次性日志/截图/脱敏样例放入 Sprint `evidence/`，可复用脚本、fixture、golden case 放到项目测试或脚本目录并在报告中链接。仅独立上下文边界且产独立证据的 Task 才写自己的 `tasks/T###/smoke-report.md`。
 2. 更新 Sprint `plan.md` 中该 Task 行：实现完成但未独立验证时状态为 `已实现`；同时回填结束时间、主动耗时、等待耗时、实际 token、偏差原因、证据链接。若阻塞则状态为 `阻塞` 并同步 `PROGRESS.md`。父级 Epic `plan.md` 只汇总 Sprint 指标，不复制 Task 明细。
 3. 旧项目若仍使用 `docs/sprint-N.md`，同步勾选对应 Story/任务；如有契约/设计变更，回写 `docs/architecture.md` 与 CHANGELOG。
 4. 更新 `PROGRESS.md`：移到"已完成"、更新"进行中/下一步"。
@@ -113,4 +113,4 @@ description: |
    ```
 
 完成后提示：
-> "Task 已实现并通过验收。若本 Sprint 还有未完成 Task，继续调用 sprint-develop（一次 1 Task × 1 平台/上下文边界）；全部完成后使用 **project-qa**。"
+> "本切片已实现并通过验收。若本 Sprint 还有未完成上下文切片，继续调用 sprint-develop；全部完成后使用 **project-qa**。"

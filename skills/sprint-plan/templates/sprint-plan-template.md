@@ -26,7 +26,7 @@
 | Supporting | | 有帮助但不改变交付状态 | | 限时处理 |
 | Backlog | | 不明确、低优先级或条件不成熟 | | 移出本 Sprint 主路径 |
 
-> 规则：预计 < 1 小时或 < 10k token 的 smoke/schema/report/check 不单独建完整 Task 目录，合并到 Must Deliver 或 Must Verify 的验收步骤。
+> 规则：每 Sprint Task 数 ≤ 4（含验证）；Task 默认是清单行、不建目录，仅独立上下文边界且产独立证据者才建 `tasks/T###/`。预计 < 1 小时或 < 10k token 的 smoke/schema/report/check 合并到 Must Deliver/Must Verify 的验收步骤。
 
 ---
 
@@ -53,6 +53,8 @@
 ---
 
 ## 任务清单与复杂度
+
+> 每 Sprint ≤ 4 个 Task（含验证）；普通 Task 是本清单的一行，不另建目录。需要更多 Task 说明 Sprint 过大或拆得过细——合并同上下文边界的 Task，或拆成两个 Sprint。
 
 | ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 估计Token | 实际Token | 验收/证据 |
 |---|---|---|---|---|---|---|---|---|

@@ -34,6 +34,8 @@ description: |
 - 7 条答案中第 1/3/4/7 条直接写入 Epic `plan.md`「终止契约」区块（见 §3 与 `epic-termination-contract.md`），一次问答同时产出契约。
 - 仅在已存在 Epic 下新增 Sprint（非新建/重启 Epic）时，跳过本闸门，但仍按「范围守卫」核对新 Sprint 能追溯到某条 Epic 成功标准。
 
+**过闸门后立即判定并写下「结构决策」（`iteration-governance.md` §11 深度闸门）**：数本 Epic 的独立退出场景 → 决定**扁平**（<2 个独立验证里程碑，Epic plan 直接挂执行切片，无 Sprint）还是 **Epic + N 个 Sprint**（N 锚定哪几条退出场景，1 Sprint==1 独立退出场景）。把结论写入 Epic `plan.md`「结构决策」一行并冻结；执行期不再判层数，改深度须 re-baseline。**警惕碎片化**：薄到无独立退出场景的 Sprint 不立项、合并相邻；按实现轴（非能力里程碑）拆出的 Sprint 合并；可搁置的独立交付物优先拆独立 Epic（park 成本低），不在活跃 Epic 内增殖薄 Sprint。
+
 ---
 
 ## 2. Backlog 选取
@@ -44,6 +46,7 @@ description: |
 - 每条估小/中/大；**> 2 天的先拆分**再入选（粒度按"人可一次审查"）。
 - 按 `.fpg/references/iteration-governance.md` 先标出 Must Deliver、Must Verify、Supporting、Backlog；Must Deliver 必须是编码或可运行交付，且排在关键路径最前。
 - 计划/拆分/目录准备预算不超过本 Sprint 估计 token 的 10%-15%；超限后停止规划，进入 Must Deliver。
+- **粒度从粗**：每 Sprint Task 数 ≤ 4（含验证）；Task 默认是 `plan.md` 清单行、不建目录，仅独立上下文边界且产独立证据者才建 `tasks/T###/`（见 `.fpg/references/iteration-governance.md` §6/§7）。同一上下文边界的多个小步骤合成一个 Task，别按"契约/路由/desktop/cloud/gate"机械五连拆。
 
 ---
 
@@ -53,12 +56,12 @@ description: |
 - `docs/iteration/plan.md`：Epic 清单与 Epic 级汇总指标。
 - `docs/iteration/epics/E###-name/plan.md`：Epic 目标、范围、Sprint 清单、Sprint 关键路径分类、Sprint 依赖图与指标。**新建 Epic 必须按 `epic-termination-contract.md` §2 写入「终止契约」区块**（不可变 DoD 绑定真实用户结果、Sprint/Token 预算上限、退出场景、明确不做 out-of-scope、最硬外部依赖与责任人）；缺契约不得进入 Sprint 拆分。Sprint 清单每行新增「追溯成功标准」列，追溯不到或属 out-of-scope 的 Sprint 不立项。
 - `docs/iteration/epics/E###-name/sprints/S###-name/plan.md`：Sprint 计划、Task 清单、Task 关键路径分类、Task 依赖图、并行边界、验收标准与指标。
-- 每个 Task 目录：`tasks/T###-name/plan.md`、`worklog.md`、`smoke-report.md`、`evidence/`。
+- Sprint 目录：`worklog.md`、`smoke-report.md`、`evidence/`（每 Sprint 各一份，按 Task 分节）。普通 Task 不建目录；仅独立上下文边界且产独立证据的 Task 才建 `tasks/T###-name/`（`plan.md`+`smoke-report.md`+`evidence/`）。
 
 Sprint `plan.md` 填充：
 - 元信息（E/S 编号、一句话目标、选定 Story 列表）。
 - 每条 Story：描述 + ≥3 个 Given/When/Then 场景 + **Task 分解表**。
-- 每个 Task：目标、输入、允许/禁止修改范围、验收标准、估计 token、证据路径。
+- 每个 Task（写在清单行/分节，不另建文件）：目标、输入、允许/禁止修改范围、验收标准、估计 token、证据路径。
 - **关键路径表**：明确 Must Deliver、Must Verify、Supporting、Backlog；预计 < 1 小时或 < 10k token 的 smoke/schema/report/check 合并为验收步骤，不建完整 Task 目录。
 - **依赖与并行甬道图**：用 Mermaid 表示直接下级依赖；Epic `plan.md` 画 Sprint 关系，Sprint `plan.md` 画 Task 关系。清单和图必须表达同一组直接子级。
 - **状态初始化**：新建 Epic/Sprint/Task 行时状态为 `未开始`；若明确不进入当前 Sprint/Epic，状态为 `搁置` 并写明原因。所有状态只写对应层级 `plan.md` 的直接下级清单。
@@ -77,4 +80,4 @@ Sprint `plan.md` 填充：
 2. 回填对应 Epic/Sprint `plan.md` 的创建时间、估计 token 与 `未开始` 状态；确认 `docs/iteration/plan.md` 只保留 Epic 汇总。
 3. 遥测：`phase_complete`（phase=sprint_plan，`--milestone E###/S###`，`--outcome ok`）。
 4. 提示：
-   > "Sprint 计划已保存至 docs/iteration/epics/E###-.../sprints/S###-.../plan.md。下一步请使用 **sprint-develop** 实现具体 Task（一次 1 Task × 1 平台/上下文边界）。"
+   > "Sprint 计划已保存至 docs/iteration/epics/E###-.../sprints/S###-.../plan.md。下一步请使用 **sprint-develop** 实现（一次 1 个上下文切片，可含同边界多个清单 Task）。"

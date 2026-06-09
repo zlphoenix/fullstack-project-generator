@@ -28,11 +28,13 @@ docs/iteration/
       plan.md
       sprints/
         S001-sprint-name/
-          plan.md
-          tasks/
-            T001-task-name/
+          plan.md            # 计划 + Task 清单（每 Task 一行，默认不另建目录）+ 指标真源
+          worklog.md         # 本 Sprint 唯一过程日志（按 Task 分节）
+          smoke-report.md    # 本 Sprint 唯一验证证据（按 Task/场景分节）
+          evidence/          # 本 Sprint 一次性证据
+          tasks/             # 例外：仅独立上下文边界且产独立证据的 Task 才建目录
+            T003-independent-context-task/
               plan.md
-              worklog.md
               smoke-report.md
               evidence/
 ```
@@ -47,13 +49,13 @@ docs/iteration/
 |---|---|
 | `docs/iteration/plan.md` | Epic 清单与 Epic 级汇总指标 |
 | `E###/plan.md` | Epic 目标、范围、Sprint 清单与汇总指标 |
-| `S###/plan.md` | Sprint 目标、Task 清单、依赖、并行边界、验收标准与汇总指标 |
-| `T###/plan.md` | Task 目标、输入、允许/禁止修改范围、验收标准、估计 token |
+| `S###/plan.md` | Sprint 目标、Task 清单（含每 Task 目标/范围/验收/token）、依赖、并行边界、验收标准与汇总指标 |
+| `T###/plan.md` | 仅例外独立目录 Task 才有；普通 Task 上述信息写在 Sprint plan 的清单行 |
 
 规则：
 - 不新增同级 `INDEX.md`。
 - 父级 `plan.md` 只记录直接子级汇总，不复制孙级明细。
-- `worklog.md` 只记录过程，`smoke-report.md` 只记录验证证据，状态/token/耗时汇总只回填到对应 `plan.md`。
+- 文档默认落 Sprint 级：`worklog.md` 只记录过程，`smoke-report.md` 只记录验证证据，二者每 Sprint 各一份（按 Task 分节）；状态/token/耗时汇总只回填到对应 `plan.md`。
 - 总账文件只能由协调线程更新；子线程只写自己的 Task 目录，除非被明确授权。
 
 ## 4. plan.md 必备区块
@@ -65,7 +67,7 @@ docs/iteration/
 | `docs/iteration/plan.md` | Epic 清单：目标、状态、时间、主动/等待耗时、估计/实际 token、证据 | 可选；多个 Epic 有依赖时必须有 Epic 依赖图 |
 | `E###/plan.md` | Sprint 清单：目标、关键路径分类、前置 Sprint、可并行 Sprint、估计/实际 token、证据 | 必须有 Sprint 依赖图 |
 | `S###/plan.md` | Task 清单：分类、前置 Task、可并行 Task、估计/实际 token、验收产物/证据 | 必须有 Task 依赖图 |
-| `T###/plan.md` | 子步骤清单：实现步骤、验证步骤、quick check、允许/禁止修改范围 | 复杂 Task 可选；有内部并行时必须有子步骤依赖图 |
+| `T###/plan.md`（仅例外独立目录 Task） | 子步骤清单：实现步骤、验证步骤、quick check、允许/禁止修改范围 | 复杂 Task 可选；有内部并行时必须有子步骤依赖图 |
 
 下级清单必须包含状态字段，用于表示直接下级当前是否未开始、执行中、已实现、已验证、完成、阻塞或搁置：
 
@@ -151,38 +153,35 @@ Sprint 计划必须先识别交付闸门，防止验证框架、文档和过程�
 规则：
 - Must Deliver 必须排在 Sprint 关键路径最前面，且必须包含能改变交付状态的代码或可运行产物。
 - 预计 < 1 小时或 < 10k token 的 smoke、schema、report、check，不建完整 Task 目录；作为 Must Deliver/Must Verify 的验收步骤记录在 `smoke-report.md`。
+- **Task 默认是 Sprint `plan.md` 的清单行，不建目录**；只有同时满足「是独立上下文边界（值得单独一次 sprint-develop 调用、与其他 Task 无法共享上下文）」且「产出需留存的独立证据」时，才建 `tasks/T###/`。其余 Task 的过程与验证写进 Sprint 级 `worklog.md`/`smoke-report.md` 的分节。
+- **每个 Sprint 的 Task 数 ≤ 4（含验证 Task）**。需要更多 → Sprint 过大或拆得过细：合并同上下文边界的 Task，或拆成两个 Sprint。固定的「每 Task 文档脚手架 + 上下文重载」开销不随 Task 变小而缩小，过度分解会成倍放大治理 token、挤占真正的代码生成。
+- **验证集中而非每 Task 重复**：Task 级只记录即时 smoke；完整 parity/回归/golden gate 每 Sprint 末跑一次、Epic 末跑一次，中间 Task 不各自重跑全量回归。
 - schema、runner、scenario、diff、redaction 如果共同服务同一个验证目标，优先合并为一个“金标准验证最小闭环”Task；完成最小闭环后再拆增强项。
 - Sprint 计划、上下文整理和任务目录准备总 token 不应超过 Sprint 预算的 10%-15%；超限后停止规划，进入 Must Deliver。
 - 执行任何 Task 前先问：它是否直接推进 Must Deliver 或 Must Verify？如果不是，只能消耗固定小预算，超出立即停止并转回关键路径。
 - token 或时间不足时，按顺序保留：可运行代码、最小验证、必要记录；完整文档、扩展场景、性能和治理项进入 Backlog。
 - 验证框架服务于产品交付，不能用“验证框架完成”替代“产品能力可用”。
 
-## 7. Task 文档
+## 7. Sprint 与 Task 文档
 
-每个 Task 至少包含：
+文档默认落在 **Sprint 级**，不再每 Task 一套。每个 Sprint 目录至少包含：
 
 ```text
-plan.md
-worklog.md
-smoke-report.md
-evidence/
+plan.md          # 计划 + Task 清单（每 Task 一行）+ 指标真源
+worklog.md       # 全 Sprint 过程日志（按 Task 分节）
+smoke-report.md  # 全 Sprint 验证证据（按 Task/场景分节）
+evidence/        # 一次性证据
 ```
 
-`T###/plan.md` 至少包含：
-- 任务目标。
-- 前置条件。
-- 输入产物。
-- 允许修改范围。
-- 禁止修改范围。
-- 验收标准。
-- 关联文档链接。
-- 估计 token。
+普通 Task **不另建目录**：其目标、允许/禁止修改范围、验收标准、估计 token 写在 `S###/plan.md` 的 Task 清单行（或其下方一段），过程记入 Sprint `worklog.md` 对应分节，验证记入 Sprint `smoke-report.md` 对应分节。
+
+**独立目录 Task（例外）**：仅当某 Task 同时是独立上下文边界（值得单独一次 sprint-develop 调用、与其他 Task 无法共享上下文）且产出需留存的独立证据时，才建 `tasks/T###/`，内含 `plan.md`（目标/前置/输入/允许-禁止修改范围/验收/关联链接/估计 token）+ `smoke-report.md` + `evidence/`；其过程日志仍并入 Sprint `worklog.md`。
 
 `worklog.md` 记录时间顺序、命令和关键输出摘要、遇到的问题、临时判断、未解决风险。
 
-`smoke-report.md` 记录 pass/fail/blocked、实际验证命令、关键证据、是否需要升级为代码修复、实际 token、偏差原因。
+`smoke-report.md` 记录每个 Task/场景的 pass/fail/blocked、实际验证命令、关键证据、是否需要升级为代码修复、实际 token、偏差原因。
 
-`evidence/` 只保存本 Task 的一次性验收证据，例如日志、截图、命令输出摘要、脱敏请求/响应样例和临时报告。可复用测试 fixture、golden case、验证脚本、自动化资产不放在 `docs/iteration/` 下，应放到项目的 `tests/fixtures/`、`tests/golden/`、`scripts/` 或约定的测试目录，并在 `smoke-report.md` 中链接。
+`evidence/` 只保存一次性验收证据，例如日志、截图、命令输出摘要、脱敏请求/响应样例和临时报告。可复用测试 fixture、golden case、验证脚本、自动化资产不放在 `docs/iteration/` 下，应放到项目的 `tests/fixtures/`、`tests/golden/`、`scripts/` 或约定的测试目录，并在 `smoke-report.md` 中链接。
 
 ## 8. 并行任务规则
 
@@ -231,3 +230,19 @@ Sprint 的 `plan.md` 必须写清前置任务、可并行任务、合并点、�
 4. **范围守卫**：每个新 Sprint 必须追溯到 Epic 某条成功标准；追溯不到、或属于 out-of-scope、或只是「补一个非 DoD 的未覆盖点」→ 不立项，转 Backlog。
 5. **自治 stop-gate**：agent 不得自我授权 Sprint N+1；连续 N 个 Sprint（默认 2）未让任一退出场景从红转绿（只产出文档/测试/脚手架）→ 强制停。
 6. **闸门 no-go 归因**：区分「内部可修 / 外部不可得 / 范围外」；外部不可得不得用「再来一个 Sprint」消化；严禁为刷绿闸门放宽契约或跳过负向场景。
+
+## 11. 结构深度闸门（层级按退出场景伸缩，规划期一次定死）
+
+> 动机：§10 防「蔓延」（失控地加 Sprint）；本节防对称的另一面「碎片化」（拆出大量薄到不做事的 Sprint/Task，固定治理开销被成倍放大、挤占真正的代码生成）。两者同根——都在优化流程产物而非交付物。
+> 原则：用尽量少的层级装下交付物；层级深度在**规划期由客观触发器一次判定、写进 plan、冻结**；执行期只读冻结结构，不再判断（消除"每次选层数"的歧义与钻空子空间）。
+
+强制规则（违反即停，升级人类）：
+
+1. **深度由退出场景决定，不靠体感**：
+   - **Sprint 层**仅当 Epic 有 **≥2 个能独立通过/失败的退出场景（验证里程碑）**时才设；否则**扁平**——Epic `plan.md` 直接挂执行切片清单，无 Sprint 层。
+   - **1 个 Sprint == 1 个独立退出场景**（或一组必须一起验证的退出场景）。薄到没有自己能独立转绿的退出场景的 Sprint → 不立项，合并到相邻 Sprint。「某 Sprint 不做事」即此信号。
+   - **Task 目录**仅当该单元既是独立上下文边界、又产需留存的独立证据时才建（见 §6/§7）；否则为清单行。
+2. **数量锚定退出场景，防钻空子**：活跃 Sprint 数不得超过 Epic 独立退出场景数；不得通过「少套一层」逃过 Must Verify 闸门——独立验证里程碑的数量**直接数 Epic `plan.md` 已写的退出场景**，不是自由心证。
+3. **规划期一次定死 + 冻结**：`sprint-plan` 创建/重启/re-baseline Epic 时，按本节判定结构深度并写入 Epic `plan.md`「结构决策」一行（扁平 / Epic+N Sprint，并写明 N 锚定哪几条退出场景）。执行期不得重新判断层数。改结构深度 = 与改预算上限同级的 re-baseline，须人类批准并记录。
+4. **终止契约不可省**：无论扁平还是多层，每个 Epic 都必须有终止契约（§10）；扁平小 plan 也要写 DoD / 预算上限 / 杀死条件。
+5. **跨 Epic 拆分优先于 Sprint 增殖**：把独立、可搁置（park）的交付物拆成**独立 Epic** 成本低（只花一份 plan，不产生执行期开销）；在活跃 Epic 内**增殖薄 Sprint** 成本高（每个多一道验证闸门 + 一套文档 + 一次上下文重载）。优先前者，警惕后者；合并按实现轴（而非能力里程碑）拆出的相邻 Sprint。
