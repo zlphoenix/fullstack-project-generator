@@ -134,6 +134,13 @@ deploy_common() {
   else
     warn "跳过 .fpg/references：已存在非软链目录（不覆盖）"
   fi
+  # 机械校验脚本：软链 .fpg/bin（fpg-check.sh 等）
+  local bin="$PROJECT_DIR/.fpg/bin"
+  if [ -L "$bin" ] || [ ! -e "$bin" ]; then
+    run "ln -snf '$FPG_HOME/project-template/bin' '$bin'"
+  else
+    warn "跳过 .fpg/bin：已存在非软链目录（不覆盖）"
+  fi
 }
 
 # —— 工具侧自动埋点 hook（--wire-hooks）——
@@ -259,6 +266,10 @@ uninstall_fpg() {
   local refs="$PROJECT_DIR/.fpg/references"
   if [ -L "$refs" ] && [ "$(readlink "$refs")" = "$FPG_HOME/project-template/references" ]; then
     say "▶ 移除 .fpg/references 软链"; run "rm -f '$refs'"
+  fi
+  local bin="$PROJECT_DIR/.fpg/bin"
+  if [ -L "$bin" ] && [ "$(readlink "$bin")" = "$FPG_HOME/project-template/bin" ]; then
+    say "▶ 移除 .fpg/bin 软链"; run "rm -f '$bin'"
   fi
   say ""
   say "ℹ️  以下内容**保留**（可能含你的改动，需手动处理）："

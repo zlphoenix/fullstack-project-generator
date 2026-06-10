@@ -34,10 +34,41 @@
 | `story_reopen` | 已完成 Story 被重新打开（**返工**信号） | `story`, `reason?` |
 | `contract_change` | API 契约变更 | `version?` |
 | `verification` | 一次验证/验收（编译/测试/AC） | `kind`(compile\|test\|ac\|e2e), `outcome` |
-| `session_start` | 会话开始（**工具 hook 自动**：Claude SessionStart） | `hook` |
-| `turn_complete` | 一个 agent 回合结束（**工具 hook 自动**：Codex notify / Claude Stop） | `codex_event`/`hook`, `turn_id` |
+| `session_start` | 会话开始（**工具 hook 自动**：Claude SessionStart） | `hook`, `session_id` |
+| `turn_complete` | 一个 agent 回合结束（**工具 hook 自动**：Codex notify / Claude Stop） | `codex_event`/`hook`, `turn_id`, `session_id`, `usage`, E/S/T 归因 |
 
 > `session_start` / `turn_complete` 由**工具侧 hook 自动发出**（见 `hooks/`），不依赖模型在 SKILL 里自觉调用 emit——这是"使用即度量"可靠性的关键。其余事件仍由 SKILL 在关键时机 best-effort 发出。
+
+## attrs.usage —— 真实 token 用量（instrumentation，模型零参与）
+
+> **原则：所有"测量值"（token、耗时）一律由工具侧 instrumentation 采集，不要求（也不信任）模型自报。**
+> plan.md 等项目文档只保留计划值（状态、证据、Epic/Sprint 级估计 token 预算），见 ADR/变更档案 2026-06-10。
+
+`turn_complete` 事件可携带 `attrs.usage`：
+
+```json
+{ "input_tokens": 1200, "cached_input_tokens": 800, "output_tokens": 300,
+  "total_tokens": 1500, "turn_total_tokens": 420, "source": "codex_rollout" }
+```
+
+- `total_tokens` 等为**会话累计**值；`turn_total_tokens` 为**本回合增量**（聚合用它，避免重复累计）。
+- 来源：Codex 由 `hooks/codex_usage.sh` 从会话 rollout JSONL 提取（已支持）；Claude Code 从 Stop hook 的 `transcript_path` 提取（待接入，P1）。
+- `emit.sh --usage '<json>'` 可显式附带（hook 内部已自动处理）。
+
+## attrs 中的 E/S/T 归因 —— `.fpg/current-task` 标记文件
+
+token/耗时归因到 Epic/Sprint/Task 靠项目根的 `.fpg/current-task`（k=v 每行），由 Skill 在**切片开始时写一次**、切片结束时删除：
+
+```text
+epic=E001
+sprint=S001
+task=T003
+platform=backend
+skill=sprint-develop
+phase=sprint_develop
+```
+
+hook 上报时自动读取：`epic/sprint/task/story/platform` 并入 attrs；`skill/phase/milestone` 覆盖事件同名字段。文件不存在时事件照常发出（仅无归因）。该文件应加入用户项目 `.gitignore`。
 
 ## 示例
 
@@ -66,3 +97,6 @@
 - **契约变更次数**：`count(contract_change)`
 - **AC 通过率**：`count(verification[kind=ac].outcome=ok) / count(verification[kind=ac])`
 - **各角色/项目分布**：按 `actor_role` / `project_id` 分组
+- **token 用量**：`sum(turn_complete.attrs.usage.turn_total_tokens)`，按 project / phase / skill / epic / sprint / task 分组
+- **活跃耗时（近似）**：同一 `session_id` 内相邻 `turn_complete` 的时间差（超过 30 分钟视为空闲、不计入），按 phase/skill 归集
+- **skill 命中**：各事件按 `skill` 字段分组计数（哪些 Skill 被触发、频次）

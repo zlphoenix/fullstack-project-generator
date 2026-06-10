@@ -6,7 +6,7 @@
 
 ## 0. 本项目怎么运作
 - **迭代模式**：以 **Sprint** 为最小交付周期；每个迭代结束做回顾，用遥测观测指标评估并持续改进。
-- **迭代治理**：采用 **Epic(E) → Sprint(S) → Task(T)**；每级 `plan.md` 是唯一计划、直接子项清单、状态与耗时/token 指标真源，详见 `.fpg/references/iteration-governance.md`。
+- **迭代治理**：采用 **Epic(E) → Sprint(S) → Task(T)**；每级 `plan.md` 是唯一计划、直接子项清单与状态真源。**规划期**读 `.fpg/references/iteration-governance.md` 全文；**执行期**只读 `.fpg/references/execution-card.md`（执行卡）；硬规则由 `.fpg/bin/fpg-check.sh` 机械校验。
 - **契约先行**：先定 PRD → 架构 → API 契约（`api/openapi.yaml`），再并行开发；契约锁定后前后端/多端可并行。
 - **进展从产物派生（无状态文件、无 MCP）**：当前进展由项目真实产物判断——`docs/PRD.md`、`docs/iteration/**/plan.md`、`PROGRESS.md`、`git log`；旧项目兼容 `docs/sprint-N.md`。**新会话/新成员开始前，先读这些产物确定"做到哪了"。**
 
@@ -24,9 +24,8 @@
 
 ## 3. 需求与拆分
 - User Story 满足 INVEST；验收标准用 Given/When/Then；优先级用 MoSCoW（Must ~60%）。
-- Story 粒度按"人可一次审查"切；执行粒度按 Task 管理。
+- Story 粒度按"人可一次审查"切；执行按上下文切片：一次 1 个平台/上下文边界（可含同边界多个清单 Task）。
 - 方法论细节见 `.fpg/references/methodology.md`。
-- Sprint 执行粒度按 Task 管理；开发一次 1 Task × 1 平台/上下文边界，Task 的过程记录和验收证据写入自己的目录。
 
 ## 4. 技术栈与平台规范
 | 平台 | 规范参考 |
@@ -36,37 +35,26 @@
 | iOS (SwiftUI) | `.fpg/references/ios-guide.md` |
 | Android (Compose) | `.fpg/references/android-guide.md` |
 | API 设计 | `.fpg/references/api-design.md` |
-| 迭代治理 | `.fpg/references/iteration-governance.md` |
+| 迭代治理（规划期全文） | `.fpg/references/iteration-governance.md` |
+| 执行卡（执行期唯一治理文本） | `.fpg/references/execution-card.md` |
 
 > 实现必须与 `api/openapi.yaml` 契约一致；契约变更先改契约、记 CHANGELOG，再改代码。
 
-## 5. 遥测埋点（统一观测，best-effort）
-> 让流程数据被统一收集用于运营报表与改进（详见生成器仓库 `telemetry/`）。**绝不阻断开发**：未配置/离线/禁用都安全跳过。
+## 5. 度量（instrumentation，模型零记账）
+> **测量值（token 用量、耗时）由工具 hook 自动采集**（`session_start`/`turn_complete` 事件，含真实 usage），模型**不估算、不自报、不回填**。查看走遥测看板：`telemetry` 收集器的 `GET /report`。未安装/离线/禁用（`FPG_TELEMETRY_DISABLED=1`）都安全跳过，绝不阻断开发。
 
-仅当环境变量 `FPG_HOME` 存在时调用埋点（否则跳过，不报错）：
+模型唯一要做的：**切片开始时写归因标记，结束时删除**——
 
 ```bash
-[ -n "$FPG_HOME" ] && bash "$FPG_HOME/telemetry/emit.sh" \
-  --event-type <type> --project <project_id> --milestone <如 Sprint-3> \
-  --skill <skill-name> --phase <phase> \
-  --outcome <ok|fail|skip>          # 可选
-  --attrs '{"story":"US-1-001","platform":"backend"}'   # 可选, 合法 JSON
+mkdir -p .fpg && printf 'epic=E001\nsprint=S001\ntask=T001\nplatform=backend\nskill=sprint-develop\nphase=sprint_develop\n' > .fpg/current-task
+# …… 切片收尾 ……
+rm -f .fpg/current-task
 ```
 
-`actor_role`/`tool` 由环境变量（`FPG_ACTOR_ROLE`/`FPG_TOOL`，由 install.sh 配置）自动带上，无需在命令里传。
-事件类型与字段见生成器仓库 `telemetry/schema.md`。各 SKILL 推荐埋点点：
+hook 自动把标记附到每个遥测事件上，token/耗时即归因到对应 E/S/T。`.fpg/current-task` 应加入 `.gitignore`。
+业务里程碑事件（`story_complete`/`contract_change`/`verification` 等）仍可由 SKILL 调 `emit.sh` best-effort 发出（字段见生成器仓库 `telemetry/schema.md`），但**不再要求携带任何 token/耗时数字**。
 
-| SKILL | 开始 | 完成 |
-|---|---|---|
-| project-requirements | `phase_enter`(requirements) | `phase_complete` |
-| project-architecture | `phase_enter`(architecture) | `phase_complete`；契约生成 `contract_change` |
-| project-scaffold | `phase_enter`(scaffold) | `phase_complete` |
-| sprint-plan | `phase_enter`(sprint_plan) | `phase_complete` |
-| sprint-develop | `story_start`；重开已完成 Story 则 `story_reopen` | `story_complete`；验收 `verification`(kind=ac/compile/test) |
-| project-qa | `phase_enter`(qa) | `phase_complete`；测试结果 `verification`(kind=test) |
-| project-deploy | `phase_enter`(deploy) | `phase_complete` |
-
-> 隐私：只采流程元数据，不采代码/PII；可 `FPG_TELEMETRY_DISABLED=1` 关闭。度量用于改进，不作个人考核。
+> 隐私：只采流程元数据，不采代码/PII。度量用于改进，不作个人考核。
 
 ## 6. 进度文件 PROGRESS.md
-长程开发用 `PROGRESS.md` 做结构化笔记：记录已完成功能、当前进行项、未决问题、下一步。新会话先读它 + 最新 E/S/T `plan.md` + 跑端到端冒烟，再开始新功能。
+长程开发用 `PROGRESS.md` 做结构化笔记：记录已完成功能、当前进行项、未决问题、下一步。新会话先读它 + 最新 E/S `plan.md` + 跑端到端冒烟，再开始新功能。

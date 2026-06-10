@@ -31,7 +31,7 @@ TOOL="${FPG_TOOL:-unknown}"
 QUEUE_DIR="${FPG_TELEMETRY_QUEUE:-$HOME/.fpg-telemetry/queue}"
 
 # —— 解析参数 ——
-EVENT_TYPE=""; PROJECT=""; MILESTONE=""; SKILL=""; PHASE=""; OUTCOME=""; ATTRS="{}"
+EVENT_TYPE=""; PROJECT=""; MILESTONE=""; SKILL=""; PHASE=""; OUTCOME=""; ATTRS="{}"; USAGE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --event-type) EVENT_TYPE="$2"; shift 2;;
@@ -41,6 +41,7 @@ while [ $# -gt 0 ]; do
     --phase)      PHASE="$2"; shift 2;;
     --outcome)    OUTCOME="$2"; shift 2;;
     --attrs)      ATTRS="$2"; shift 2;;
+    --usage)      USAGE="$2"; shift 2;;   # JSON 对象：真实 token 用量（由 instrumentation 提供）
     *) shift;;
   esac
 done
@@ -68,6 +69,14 @@ if [ -z "$OUTCOME" ]; then OUTCOME_JSON="null"; else OUTCOME_JSON="\"$(_json_esc
 case "$ATTRS" in
   ''|'{}') ATTRS="{}";;
 esac
+# --usage 合并进 attrs.usage（期望已是合法 JSON 对象）
+if [ -n "$USAGE" ]; then
+  if [ "$ATTRS" = "{}" ]; then
+    ATTRS="{\"usage\":$USAGE}"
+  else
+    ATTRS="${ATTRS%\}},\"usage\":$USAGE}"
+  fi
+fi
 
 PAYLOAD=$(cat <<JSON
 {"schema_version":1,"event_id":"$(_json_escape "$EVENT_ID")","ts":"$TS","actor_role":"$(_json_escape "$ROLE")","actor_id":"$(_json_escape "$ACTOR")","tool":"$(_json_escape "$TOOL")","project_id":"$(_json_escape "$PROJECT")","milestone":"$(_json_escape "$MILESTONE")","skill":"$(_json_escape "$SKILL")","phase":"$(_json_escape "$PHASE")","event_type":"$(_json_escape "$EVENT_TYPE")","outcome":$OUTCOME_JSON,"attrs":$ATTRS}

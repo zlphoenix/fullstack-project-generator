@@ -33,5 +33,7 @@ There is **no `.project-state.json` and no MCP**. Each Skill derives "where the 
 - Frontmatter `name` + `description` drive trigger matching — keep descriptions specific, third-person, with trigger terms.
 - Keep `SKILL.md` body < 500 lines; split into `references/` and keep references one level deep.
 - Each Skill starts with a 前置检查 that reads project artifacts (not an MCP) and ends by updating those artifacts + `PROGRESS.md`.
-- `sprint-develop` is scoped to **1 Story × 1 platform** per invocation to avoid context overload.
+- `sprint-develop` is scoped to **1 context slice (= 1 platform/context boundary, may bundle multiple同边界 Tasks)** per invocation to avoid context overload.
+- **Progressive disclosure for governance**: planning-phase skills load `iteration-governance.md` in full; execution-phase skills load only `execution-card.md` (~40 lines). Hard rules are enforced by `.fpg/bin/fpg-check.sh`, not by prose repetition inside SKILL bodies.
+- **Measurements are instrumentation-only**: token/duration come from tool hooks (`telemetry/hooks/`), never from model self-reporting. Skills only write/remove the `.fpg/current-task` attribution marker. Dashboards: collector `GET /report`.
 - Universal conventions all Skills assume live in the **project-level `AGENTS.md`** (deployed from `project-template/`); platform guides are project-level references.

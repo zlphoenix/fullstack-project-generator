@@ -19,14 +19,15 @@
 
 ## 关键路径与任务分类
 
-| 分类 | 任务 | 为什么属于该分类 | Token 预算 | 完成标准 |
-|------|------|------------------|------------|----------|
-| Must Deliver | | 不完成则本 Sprint 失败 | | 可运行交付 / 代码提交 |
-| Must Verify | | 证明 Must Deliver 生效 | | 最小 smoke/test/evidence |
-| Supporting | | 有帮助但不改变交付状态 | | 限时处理 |
-| Backlog | | 不明确、低优先级或条件不成熟 | | 移出本 Sprint 主路径 |
+| 分类 | 任务 | 为什么属于该分类 | 完成标准 |
+|------|------|------------------|----------|
+| Must Deliver | | 不完成则本 Sprint 失败 | 可运行交付 / 代码提交 |
+| Must Verify | | 证明 Must Deliver 生效 | 最小 smoke/test/evidence |
+| Supporting | | 有帮助但不改变交付状态 | 限时处理 |
+| Backlog | | 不明确、低优先级或条件不成熟 | 移出本 Sprint 主路径 |
 
-> 规则：每 Sprint Task 数 ≤ 4（含验证）；Task 默认是清单行、不建目录，仅独立上下文边界且产独立证据者才建 `tasks/T###/`。预计 < 1 小时或 < 10k token 的 smoke/schema/report/check 合并到 Must Deliver/Must Verify 的验收步骤。
+> 规则：每 Sprint Task 数 ≤ 4（含验证）；Task 默认是清单行、不建目录，仅独立上下文边界且产独立证据者才建 `tasks/T###/`。预计 < 1 小时的 smoke/schema/report/check 合并到 Must Deliver/Must Verify 的验收步骤。
+> token/耗时由 hook 自动采集（看遥测看板 `GET /report`），**本模板不含任何手工 token 记账字段**；预算上限只写在 Epic 终止契约。
 
 ---
 
@@ -44,11 +45,11 @@
 
 **技术任务分解**:
 
-| 任务 | 分类 | 平台 | 描述 | 预估复杂度 | 估计Token用量 | 实际Token用量 |
-|------|------|------|------|-----------|---------------|---------------|
-| T-001 | Must Deliver / Must Verify / Supporting | Backend | | S/M/L | | TBD |
-| T-002 | Must Deliver / Must Verify / Supporting | iOS | | S/M/L | | TBD |
-| T-003 | Must Deliver / Must Verify / Supporting | Web | | S/M/L | | TBD |
+| 任务 | 分类 | 平台 | 描述 | 预估复杂度 |
+|------|------|------|------|-----------|
+| T-001 | Must Deliver / Must Verify / Supporting | Backend | | S/M/L |
+| T-002 | Must Deliver / Must Verify / Supporting | iOS | | S/M/L |
+| T-003 | Must Deliver / Must Verify / Supporting | Web | | S/M/L |
 
 ---
 
@@ -56,10 +57,10 @@
 
 > 每 Sprint ≤ 4 个 Task（含验证）；普通 Task 是本清单的一行，不另建目录。需要更多 Task 说明 Sprint 过大或拆得过细——合并同上下文边界的 Task，或拆成两个 Sprint。
 
-| ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 估计Token | 实际Token | 验收/证据 |
-|---|---|---|---|---|---|---|---|---|
-| T001 | | Must Deliver / Must Verify / Supporting / Backlog | 无 | 否 | 未开始 | | TBD | |
-| T002 | | Must Deliver / Must Verify / Supporting / Backlog | T001 | 可与 T003 并行 | 未开始 | | TBD | |
+| ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 证据 |
+|---|---|---|---|---|---|---|
+| T001 | | Must Deliver / Must Verify / Supporting / Backlog | 无 | 否 | 未开始 | |
+| T002 | | Must Deliver / Must Verify / Supporting / Backlog | T001 | 可与 T003 并行 | 未开始 | |
 
 ---
 
@@ -113,8 +114,7 @@ flowchart LR
 | 证据级别符合 Epic「证据真实性边界」 | <声明类型 → 实际证据级别对照> |
 | 代码已提交并通过 CI | <commit / CI run 链接> |
 
-### 范围与止损自检（对照 Epic 终止契约）
+### 范围与止损自检（机械判定优先）
 
-- [ ] 本 Sprint 可追溯到 Epic 某条成功标准（追溯不到 → 不应立项，见 `epic-termination-contract.md`）。
-- [ ] 未触及 Epic Sprint/Token 预算硬上限（计划 × 1.2）。
-- [ ] 无 `blocked-external`：若阻塞于无法获得的外部依赖，已停并升级，未派生相邻脚手架。
+- [ ] `bash .fpg/bin/fpg-check.sh gate <epic-dir>` 输出无 STOP（预算熔断、终止契约、blocked-external 由脚本判定）。
+- [ ] 本 Sprint 可追溯到 Epic 某条成功标准（追溯不到 → 不应立项，见治理规范 §9 范围守卫）。

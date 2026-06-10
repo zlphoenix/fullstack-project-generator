@@ -27,7 +27,7 @@ docs/                       # 治理(决策/里程碑)、研究、规划、度�
 
 ## Skill 流水线
 
-线性阶段，每个 Skill 完成时把阶段写入 `project-state` MCP，下一个 Skill 据此接续：
+线性阶段，每个 Skill 从项目产物（PRD / iteration plan / PROGRESS / git log）判断进度并接续（无状态文件、无 MCP）：
 
 ```
 project-requirements → project-architecture → project-scaffold
@@ -39,8 +39,8 @@ project-requirements → project-architecture → project-scaffold
 | project-requirements | docs/PRD.md | "我想做一个电商App" |
 | project-architecture | docs/architecture.md + api/openapi.yaml | "设计架构 / 生成API" |
 | project-scaffold | 各平台项目骨架 | "初始化项目 / scaffold" |
-| sprint-plan | docs/sprint-N.md | "规划第一个Sprint" |
-| sprint-develop | 功能代码（每次 1 Story × 1 平台） | "实现用户登录" |
+| sprint-plan | docs/iteration/epics/E###/sprints/S###/plan.md | "规划第一个Sprint" |
+| sprint-develop | 功能代码（每次 1 个上下文切片＝1 平台/上下文边界） | "实现用户登录" |
 | project-qa | 各平台测试文件 | "写测试策略" |
 | project-deploy | docker/ + .github/workflows/ci.yml | "配置Docker部署" |
 

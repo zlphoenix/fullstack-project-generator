@@ -9,6 +9,7 @@
 import { EventStore } from "./store.ts";
 import { validateEvent } from "./schema.ts";
 import { computeMetrics } from "./metrics.ts";
+import { renderDashboard } from "./dashboard.ts";
 
 const PORT = Number(process.env.FPG_TELEMETRY_PORT ?? 8787);
 const DB_PATH = process.env.FPG_TELEMETRY_DB ?? "./data/events.db";
@@ -47,6 +48,15 @@ const server = Bun.serve({
     if (req.method === "GET" && url.pathname === "/stats") {
       const project = url.searchParams.get("project") ?? undefined;
       return json(computeMetrics(store.all(project ? { project_id: project } : undefined)));
+    }
+
+    // 度量看板：浏览器打开 http://localhost:8787/report[?project=xxx]
+    if (req.method === "GET" && (url.pathname === "/report" || url.pathname === "/")) {
+      const project = url.searchParams.get("project") ?? undefined;
+      const m = computeMetrics(store.all(project ? { project_id: project } : undefined));
+      return new Response(renderDashboard(m, project ? `project=${project}` : "全部项目"), {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
     }
 
     if (req.method === "POST" && url.pathname === "/events") {

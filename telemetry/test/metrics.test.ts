@@ -109,6 +109,66 @@ describe("computeMetrics", () => {
     expect(m.by_milestone["M2"]).toBe(1);
     expect(m.by_milestone["(none)"]).toBe(1);
   });
+  test("token 用量按 phase/skill/task 聚合（取 turn_total_tokens 增量）", () => {
+    const usage = (turn: number, total: number) => ({
+      usage: { input_tokens: 1, output_tokens: 1, total_tokens: total, turn_total_tokens: turn },
+    });
+    const events = [
+      ev({
+        event_type: "turn_complete", phase: "sprint_develop", skill: "sprint-develop",
+        attrs: { ...usage(400, 400), epic: "E001", sprint: "S001", task: "T001", session_id: "s1" },
+        ts: "2026-06-10T00:00:00Z",
+      }),
+      ev({
+        event_type: "turn_complete", phase: "sprint_develop", skill: "sprint-develop",
+        attrs: { ...usage(600, 1000), epic: "E001", sprint: "S001", task: "T001", session_id: "s1" },
+        ts: "2026-06-10T00:10:00Z",
+      }),
+      ev({
+        event_type: "turn_complete", phase: "qa", skill: "project-qa",
+        attrs: { ...usage(300, 300), session_id: "s2" },
+        ts: "2026-06-10T01:00:00Z",
+      }),
+      // 无 usage 的 turn 不计 token，但计入回合数
+      ev({ event_type: "turn_complete", phase: "qa", attrs: { session_id: "s2" }, ts: "2026-06-10T01:05:00Z" }),
+    ];
+    const m = computeMetrics(events);
+    expect(m.turns).toBe(4);
+    expect(m.tokens_total).toBe(1300);
+    expect(m.tokens_by_phase["sprint_develop"].total_tokens).toBe(1000);
+    expect(m.tokens_by_phase["sprint_develop"].turns).toBe(2);
+    expect(m.tokens_by_skill["project-qa"].total_tokens).toBe(300);
+    expect(m.tokens_by_task["E001/S001/T001"].total_tokens).toBe(1000);
+    expect(m.tokens_by_task["E001/S001/T001"].turns).toBe(2);
+  });
+
+  test("活跃耗时：同 session 相邻 turn 间隔，超 30 分钟剔除", () => {
+    const t = (phase: string, sid: string, ts: string) =>
+      ev({ event_type: "turn_complete", phase, attrs: { session_id: sid }, ts });
+    const events = [
+      ev({ event_type: "session_start", attrs: { session_id: "s1" }, ts: "2026-06-10T00:00:00Z" }),
+      t("sprint_develop", "s1", "2026-06-10T00:06:00Z"), // 6min（从 session_start 起算）
+      t("sprint_develop", "s1", "2026-06-10T00:18:00Z"), // 12min
+      t("sprint_develop", "s1", "2026-06-10T02:00:00Z"), // 间隔 >30min → 剔除
+      t("qa", "s1", "2026-06-10T02:30:00Z"), // 30min → 计入 qa
+    ];
+    const m = computeMetrics(events);
+    expect(m.sessions).toBe(1);
+    expect(m.active_hours_by_phase["sprint_develop"]).toBe(0.3); // 0.1 + 0.2
+    expect(m.active_hours_by_phase["qa"]).toBe(0.5);
+    expect(m.active_hours_total).toBe(0.8);
+  });
+
+  test("skill 命中分布", () => {
+    const events = [
+      ev({ event_type: "skill_start", skill: "sprint-develop" }),
+      ev({ event_type: "turn_complete", skill: "sprint-develop" }),
+      ev({ event_type: "skill_start", skill: "project-qa" }),
+    ];
+    const m = computeMetrics(events);
+    expect(m.by_skill["sprint-develop"]).toBe(2);
+    expect(m.by_skill["project-qa"]).toBe(1);
+  });
 });
 
 describe("EventStore", () => {

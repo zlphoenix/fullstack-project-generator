@@ -5,6 +5,7 @@
 //   默认：--db ./data/events.db --format md（输出到 stdout）
 import { EventStore } from "./store.ts";
 import { computeMetrics, type Metrics } from "./metrics.ts";
+import { renderDashboard } from "./dashboard.ts";
 
 function parseArgs(argv: string[]): Record<string, string> {
   const out: Record<string, string> = {};
@@ -55,6 +56,31 @@ function toMarkdown(m: Metrics, scope: string): string {
     ),
   );
   lines.push("");
+  lines.push(`## token 用量与活跃耗时（instrumentation）`);
+  lines.push("");
+  lines.push(
+    table(
+      ["指标", "值"],
+      [
+        ["token 总量", String(m.tokens_total)],
+        ["活跃耗时（近似）", `${m.active_hours_total}h`],
+        ["会话 / 回合", `${m.sessions} / ${m.turns}`],
+      ],
+    ),
+  );
+  lines.push("");
+  const tokPhaseRows = Object.entries(m.tokens_by_phase)
+    .sort((a, b) => b[1].total_tokens - a[1].total_tokens)
+    .map(([k, s]) => [k, String(s.total_tokens), String(s.turns), `${m.active_hours_by_phase[k] ?? 0}h`]);
+  lines.push(tokPhaseRows.length ? table(["阶段", "token", "回合", "活跃耗时"], tokPhaseRows) : "_（暂无 usage 数据）_");
+  lines.push("");
+  const tokTaskRows = Object.entries(m.tokens_by_task)
+    .sort((a, b) => b[1].total_tokens - a[1].total_tokens)
+    .map(([k, s]) => [k, String(s.total_tokens), String(s.turns)]);
+  if (tokTaskRows.length) {
+    lines.push(table(["E/S/T", "token", "回合"], tokTaskRows));
+    lines.push("");
+  }
   lines.push(`## 阶段周期时间`);
   lines.push("");
   const phaseRows = Object.entries(m.phase_cycle_time).map(([phase, s]) => [
@@ -88,27 +114,8 @@ function toMarkdown(m: Metrics, scope: string): string {
   return lines.join("\n");
 }
 
-function toHtml(m: Metrics, scope: string): string {
-  return `<!doctype html><html lang="zh"><head><meta charset="utf-8">
-<title>FPG 运营报表</title>
-<style>body{font-family:system-ui,-apple-system,sans-serif;max-width:880px;margin:2rem auto;padding:0 1rem;color:#222}
-h1{font-size:1.4rem}table{border-collapse:collapse;width:100%;margin:.5rem 0}th,td{border:1px solid #ddd;padding:.4rem .6rem;text-align:left}
-th{background:#f5f5f5}.kpi{display:inline-block;margin:.3rem 1rem .3rem 0;padding:.6rem 1rem;background:#f0f4ff;border-radius:8px}
-.kpi b{font-size:1.3rem;display:block}small{color:#666}</style></head><body>
-<h1>fullstack-project-generator 运营报表</h1>
-<p><small>生成时间 ${new Date().toISOString()}　范围 ${scope}</small></p>
-<div>
-<span class="kpi"><b>${m.total_events}</b>事件总数</span>
-<span class="kpi"><b>${m.story_completed}</b>完成 Story</span>
-<span class="kpi"><b>${pct(m.rework_rate)}</b>返工率</span>
-<span class="kpi"><b>${pct(m.ac_pass_rate)}</b>AC 通过率</span>
-<span class="kpi"><b>${m.story_lead_time.avg_hours}h</b>平均交付时长</span>
-</div>
-<h2>原始指标 (JSON)</h2>
-<pre>${JSON.stringify(m, null, 2)}</pre>
-<p><small>返工率用于发现瓶颈与验证规范有效性，不作个人考核。</small></p>
-</body></html>`;
-}
+// HTML 输出复用看板渲染（与 server.ts 的 GET /report 同一份）
+const toHtml = renderDashboard;
 
 const args = parseArgs(Bun.argv.slice(2));
 const dbPath = args.db ?? "./data/events.db";

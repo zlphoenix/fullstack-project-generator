@@ -49,20 +49,27 @@ export FPG_TOOL="claude"         # claude|codex（install.sh 按工具分别写�
 
 各 SKILL.md 会在关键时机自动调用 `emit.sh`（best-effort，绝不阻断开发）。
 
-### 3) 出报表
+### 3) 看结果
+
+**度量看板**（浏览器）：`http://localhost:8787/report[?project=my-app]` —— token 按阶段/Skill/E-S-T、活跃耗时、skill 命中、返工率等。
+
+命令行报表：
 
 ```bash
 cd telemetry
 bun run report --db ./data/events.db --format md                 # Markdown 到 stdout
-bun run report --db ./data/events.db --format html --out report.html
+bun run report --db ./data/events.db --format html --out report.html  # 同看板的 HTML
 bun run report --db ./data/events.db --project my-app --format json
 ```
 
 也可直接查收集器即时指标：`curl http://localhost:8787/stats`
 
+> token/耗时为**真实测量值**，由工具 hook 自动采集（见 [hooks/README.md](hooks/README.md)），模型不自报。
+
 ## API
 
 - `GET /health` → `{status, events}`
+- `GET /report?project=<id>` → 度量看板（HTML）
 - `GET /stats?project=<id>` → 聚合指标 JSON
 - `POST /events`（单条或数组）→ `{accepted, rejected}`；若设置了 `FPG_TELEMETRY_TOKEN` 需带 `Authorization: Bearer <token>`
 

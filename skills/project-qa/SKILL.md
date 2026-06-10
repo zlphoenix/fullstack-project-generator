@@ -12,17 +12,20 @@ description: |
 # project-qa — 质量保障与测试策略
 
 **目标：** 按测试金字塔生成各平台测试文件，确保关键路径有覆盖。
-**测试策略参考：** `./references/testing-strategy.md` 与 `.fpg/references/iteration-governance.md`（始终加载）。
+**测试策略参考：** `./references/testing-strategy.md`。验证三层与状态规则见 `.fpg/references/execution-card.md`（执行卡，验收/收尾两节）。
 
-> 通用约定与遥测见项目根 `AGENTS.md`。**验收应独立于实现**（生成者≠评估者）。
+> 通用约定见项目根 `AGENTS.md`。**验收应独立于实现**（生成者≠评估者）：本 Skill 尽量在独立上下文运行，默认"怀疑"，用实际运行而非生成者结论。
 
 ---
 
 ## 1. 前置准备（从产物定位范围）
 
-1. 读 `./references/testing-strategy.md`、`.fpg/references/iteration-governance.md`、最新 `docs/iteration/epics/E###-*/sprints/S###-*/plan.md`（从 Task、Given/When/Then 和并行边界推导测试场景）、`api/openapi.yaml`（契约测试 endpoint）。旧项目兼容读取 `docs/sprint-N.md`。
+1. 读 `./references/testing-strategy.md`、最新 `docs/iteration/epics/E###-*/sprints/S###-*/plan.md`（从 Task、Given/When/Then 和并行边界推导测试场景）、`api/openapi.yaml`（契约测试 endpoint）。旧项目兼容读取 `docs/sprint-N.md`。
 2. 从 `docs/architecture.md` 的平台列表确认测哪些平台；询问用户聚焦单平台还是全平台。
-3. 遥测（best-effort）：`phase_enter`（phase=qa，skill=project-qa）。
+3. 写归因标记（token/耗时由 hook 自动采集）：
+   ```bash
+   mkdir -p .fpg && printf 'epic=E###\nsprint=S###\nskill=project-qa\nphase=qa\n' > .fpg/current-task
+   ```
 
 ---
 
@@ -48,23 +51,19 @@ description: |
 ## 4. 契约测试 + 验证回路
 
 对 `api/openapi.yaml` 每个 endpoint 核对：对应 Controller 测试存在、请求/响应格式一致、401/403 已覆盖。
-按 `.fpg/references/iteration-governance.md` 执行独立验收：
+
+三层独立验收（细则见执行卡）：
 - 自动验证：unit、integration、typecheck、lint、契约校验。
 - 功能验收：真实或准真实场景 smoke。
-- 金标准验收：prompt/agent 行为类任务必须保存脱敏 evidence，或链接到项目级可复用 golden case，并记录预期与实际差异。
+- 金标准验收：prompt/agent 行为类任务必须保存脱敏 evidence 或链接可复用 golden case，并记录预期与实际差异。
 
-**验证回路**：跑测试 → 修失败 → 重跑，直到全绿；若 golden case 发现 unit test 未覆盖的问题，补测试或记录测试缺口。每轮发遥测：
-```bash
-[ -n "$FPG_HOME" ] && bash "$FPG_HOME/telemetry/emit.sh" --event-type verification \
-  --project <project_id> --phase qa --skill project-qa --outcome <ok|fail> \
-  --attrs '{"kind":"test","epic":"E001","sprint":"S001","task":"T001"}'
-```
+**验证回路**：跑测试 → 修失败 → 重跑，直到全绿；若 golden case 发现 unit test 未覆盖的问题，补测试或记录测试缺口。
 
 ---
 
 ## 5. 收尾
 
-1. 更新相关 Task 的 `smoke-report.md`：pass/fail/blocked、验证命令、关键证据、golden case 链接、测试缺口、实际 token 和偏差原因；一次性证据放 `evidence/`，可复用 golden case 放项目测试目录。
-2. 更新对应 Sprint `plan.md` 的 Task 证据链接和状态：通过独立验收为 `已验证`；报告、指标、父级汇总都完成后，由协调线程标为 `已完成`。若验收失败，保持或退回 `已实现`/`阻塞`，并记录测试缺口和下一步。
-3. 更新 `PROGRESS.md`；遥测 `phase_complete`（phase=qa，`--outcome ok`）。提示：
+1. 更新 Sprint `smoke-report.md` 对应分节：pass/fail/blocked、验证命令、关键证据、golden case 链接、测试缺口；一次性证据放 `evidence/`，可复用 golden case 放项目测试目录。
+2. 更新对应 Sprint `plan.md` 的 Task 行：通过独立验收为 `已验证`（附证据链接）；报告与父级汇总完成后由协调线程标 `已完成`；验收失败保持/退回 `已实现` 或 `阻塞`，记录缺口与下一步。
+3. 更新 `PROGRESS.md`；删除归因标记 `rm -f .fpg/current-task`。提示：
 > "测试已生成并通过。下一步请使用 **project-deploy** 配置部署环境。"
