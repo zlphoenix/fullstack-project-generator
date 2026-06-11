@@ -151,10 +151,12 @@ export function computeMetrics(events: TelemetryEvent[]): Metrics {
         tokensTotal += tokens;
         addTokens(tokensByPhase, e.phase || "(none)", tokens);
         addTokens(tokensBySkill, e.skill || "(none)", tokens);
-        const a = e.attrs ?? {};
-        if (a.epic || a.sprint || a.task) {
-          addTokens(tokensByTask, `${a.epic ?? "-"}/${a.sprint ?? "-"}/${a.task ?? "-"}`, tokens);
-        }
+      }
+      // E/S/T 归因：只要带 epic/sprint/task 标记就计入（按回合），token 缺失记 0。
+      // 与 token 解耦——让暂无 usage 的工具（如当前 Claude Code）会话也能看到归因。
+      const a = e.attrs ?? {};
+      if (a.epic || a.sprint || a.task) {
+        addTokens(tokensByTask, `${a.epic ?? "-"}/${a.sprint ?? "-"}/${a.task ?? "-"}`, tokens ?? 0);
       }
       // 活跃耗时近似：同 session 相邻 turn 间隔，归集到后一个 turn 的 phase
       const sid = String(e.attrs?.session_id ?? "");

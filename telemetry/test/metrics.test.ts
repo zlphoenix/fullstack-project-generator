@@ -142,6 +142,18 @@ describe("computeMetrics", () => {
     expect(m.tokens_by_task["E001/S001/T001"].turns).toBe(2);
   });
 
+  test("E/S/T 归因与 token 解耦：无 usage 的归因回合仍计入（turns 增、token 记 0）", () => {
+    const events = [
+      // 有标记、无 usage（如当前 Claude Code 会话）
+      ev({ event_type: "turn_complete", attrs: { epic: "E007", sprint: "S001", task: "T001", session_id: "c1" } }),
+      ev({ event_type: "turn_complete", attrs: { epic: "E007", sprint: "S001", task: "T001", session_id: "c1" } }),
+    ];
+    const m = computeMetrics(events);
+    expect(m.tokens_by_task["E007/S001/T001"].turns).toBe(2);
+    expect(m.tokens_by_task["E007/S001/T001"].total_tokens).toBe(0);
+    expect(m.tokens_total).toBe(0);
+  });
+
   test("活跃耗时：同 session 相邻 turn 间隔，超 30 分钟剔除", () => {
     const t = (phase: string, sid: string, ts: string) =>
       ev({ event_type: "turn_complete", phase, attrs: { session_id: sid }, ts });
