@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "telemetry-collector",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["--cwd", "telemetry", "run", "collector"],
+      "port": 10000
+    }
+  ]
+}
