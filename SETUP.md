@@ -20,7 +20,7 @@ bash scripts/install.sh --project-dir <你的项目> --tools claude,codex --dry-
 # 安装（推荐带 --wire-hooks：度量自动采集的关键，见 §3）
 bash scripts/install.sh --project-dir <你的项目> --tools claude,codex \
   --role dev --user <你的标识> \
-  --telemetry-endpoint http://<收集器主机>:8787 \
+  --telemetry-endpoint http://<收集器主机>:10000 \
   --wire-hooks --wire-env
 ```
 
@@ -77,8 +77,8 @@ project-requirements → project-architecture → project-scaffold
 
 ```bash
 cd <FPG_HOME>/telemetry
-FPG_TELEMETRY_PORT=8787 FPG_TELEMETRY_DB=./data/events.db bun run collector
-# 健康检查：curl http://localhost:8787/health
+FPG_TELEMETRY_PORT=10000 FPG_TELEMETRY_DB=./data/events.db bun run collector
+# 健康检查：curl http://localhost:10000/health
 ```
 
 ### 3.2 数据怎么来（自动，模型零记账）
@@ -105,8 +105,8 @@ FPG_TELEMETRY_PORT=8787 FPG_TELEMETRY_DB=./data/events.db bun run collector
 **度量看板（推荐）**：浏览器打开
 
 ```
-http://<收集器主机>:8787/report            # 全部项目
-http://<收集器主机>:8787/report?project=my-app
+http://<收集器主机>:10000/report            # 全部项目
+http://<收集器主机>:10000/report?project=my-app
 ```
 
 看板内容：token 总量与**按阶段 / 按 Skill / 按 Epic-Sprint-Task 的 token 用量**、各阶段**活跃耗时**（同会话相邻回合间隔，>30 分钟空闲自动剔除）、会话/回合数、**skill 命中分布**、阶段周期时间、Story 交付时长、返工率、AC 通过率。
@@ -120,7 +120,7 @@ bun run report --db ./data/events.db --format html --out report.html
 bun run report --db ./data/events.db --project my-app --format json
 ```
 
-**即时 JSON**：`curl http://localhost:8787/stats?project=my-app`
+**即时 JSON**：`curl http://localhost:10000/stats?project=my-app`
 
 ### 3.5 安装后自检（一次性）
 

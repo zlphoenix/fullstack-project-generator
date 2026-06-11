@@ -26,13 +26,13 @@ emit.sh (各成员本机, shell+curl)  ──POST events──▶  collector (Bu
 
 ```bash
 cd telemetry
-FPG_TELEMETRY_PORT=8787 \
+FPG_TELEMETRY_PORT=10000 \
 FPG_TELEMETRY_DB=./data/events.db \
 FPG_TELEMETRY_TOKEN=optional-secret \
 bun run collector
 ```
 
-健康检查：`curl http://localhost:8787/health` → `{"status":"ok","events":N}`
+健康检查：`curl http://localhost:10000/health` → `{"status":"ok","events":N}`
 
 ### 2) 让成员上报（配置环境变量）
 
@@ -51,7 +51,7 @@ export FPG_TOOL="claude"         # claude|codex（install.sh 按工具分别写�
 
 ### 3) 看结果
 
-**度量看板**（浏览器）：`http://localhost:8787/report[?project=my-app]` —— token 按阶段/Skill/E-S-T、活跃耗时、skill 命中、返工率等。
+**度量看板**（浏览器）：`http://localhost:10000/report[?project=my-app]` —— token 按阶段/Skill/E-S-T、活跃耗时、skill 命中、返工率等。
 
 命令行报表：
 
@@ -62,7 +62,7 @@ bun run report --db ./data/events.db --format html --out report.html  # 同看�
 bun run report --db ./data/events.db --project my-app --format json
 ```
 
-也可直接查收集器即时指标：`curl http://localhost:8787/stats`
+也可直接查收集器即时指标：`curl http://localhost:10000/stats`
 
 > token/耗时为**真实测量值**，由工具 hook 自动采集（见 [hooks/README.md](hooks/README.md)），模型不自报。
 

@@ -3,7 +3,7 @@
 //
 // 启动：bun run src/server.ts
 // 环境变量：
-//   FPG_TELEMETRY_PORT    监听端口（默认 8787）
+//   FPG_TELEMETRY_PORT    监听端口（默认 10000）
 //   FPG_TELEMETRY_DB      SQLite 文件路径（默认 ./data/events.db）
 //   FPG_TELEMETRY_TOKEN   若设置，则 /events 需带 Authorization: Bearer <token>
 import { EventStore } from "./store.ts";
@@ -11,7 +11,7 @@ import { validateEvent } from "./schema.ts";
 import { computeMetrics } from "./metrics.ts";
 import { renderDashboard } from "./dashboard.ts";
 
-const PORT = Number(process.env.FPG_TELEMETRY_PORT ?? 8787);
+const PORT = Number(process.env.FPG_TELEMETRY_PORT ?? 10000);
 const DB_PATH = process.env.FPG_TELEMETRY_DB ?? "./data/events.db";
 const TOKEN = process.env.FPG_TELEMETRY_TOKEN ?? "";
 
@@ -50,7 +50,7 @@ const server = Bun.serve({
       return json(computeMetrics(store.all(project ? { project_id: project } : undefined)));
     }
 
-    // 度量看板：浏览器打开 http://localhost:8787/report[?project=xxx]
+    // 度量看板：浏览器打开 http://localhost:10000/report[?project=xxx]
     if (req.method === "GET" && (url.pathname === "/report" || url.pathname === "/")) {
       const project = url.searchParams.get("project") ?? undefined;
       const m = computeMetrics(store.all(project ? { project_id: project } : undefined));
