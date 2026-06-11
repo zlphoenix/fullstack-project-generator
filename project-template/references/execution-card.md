@@ -6,7 +6,7 @@
 ## 起步（动手前，顺序执行）
 
 1. 读 `PROGRESS.md` + `git log --oneline -10` + 本 Sprint `plan.md`（含 Task 清单与依赖图）+ `api/openapi.yaml`。
-2. 跑 `bash .fpg/bin/fpg-check.sh gate <epic-dir>` → **STOP 则停止并升级人类，不得绕过**。
+2. 跑 `bash .fpg/bin/fpg-check.sh gate <epic-dir>` → **退出码 2 / 末行判定 STOP 才停止并升级人类，不得绕过**；退出码 0（含仅 WARN）可继续——**WARN 是提示不是阻断**（如 blocked-external 项只要不是本切片，继续做其他切片即可）。
 3. 一句话回答：**本切片让 Epic 哪条退出场景更接近全绿？** 答不出 = 非关键路径，停。
 4. 跑一次端到端冒烟（编译/启动）；失败先修或记入 `PROGRESS.md`，不在坏基线上叠代码。
 5. 与用户确认本次切片（平台/上下文边界，可含同边界多个 Task）；把 Task 行状态改 `执行中`。

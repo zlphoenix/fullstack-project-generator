@@ -7,14 +7,15 @@
 #   fpg-check.sh gate <epic-dir>        # 止损：终止契约存在性、Sprint 预算熔断、blocked-external
 #   fpg-check.sh budget <epic-dir>      # 预算：已用 / 上限（token 实际消耗看遥测看板）
 #
-# 输出每条 "OK|WARN|STOP <code>: 说明"；退出码：0=全 OK，1=有 WARN，2=有 STOP。
-# STOP 不可被执行线程绕过：必须停止并升级人类（执行卡约定）。
+# 输出每条 "OK|WARN|STOP <code>: 说明"，末尾一行总判定。
+# 退出码（二元，便于 agent/CI 判断）：0 = 无 STOP（含仅 WARN，可继续）；2 = 有 STOP（必须停止）。
+# **WARN 是提示、不阻断、退出码仍为 0**；只有 STOP 非零，且不可被执行线程绕过（执行卡约定）。
 set -u
 
-RC=0
+RC=0; WARN_N=0; STOP_N=0
 ok()   { printf 'OK   %s: %s\n' "$1" "$2"; }
-warn() { printf 'WARN %s: %s\n' "$1" "$2"; [ "$RC" -lt 1 ] && RC=1; }
-stop() { printf 'STOP %s: %s\n' "$1" "$2"; RC=2; }
+warn() { printf 'WARN %s: %s\n' "$1" "$2"; WARN_N=$((WARN_N + 1)); }   # 提示，不改退出码
+stop() { printf 'STOP %s: %s\n' "$1" "$2"; STOP_N=$((STOP_N + 1)); RC=2; }
 
 STATUSES='未开始|执行中|阻塞|已实现|已验证|已完成|搁置'
 STATUSES_EN='Planned|In Progress|Blocked|Implemented|Verified|Done|Deferred'
@@ -153,7 +154,14 @@ cmd="${1:-}"; target="${2:-}"
 case "$cmd" in
   plan-lint) [ -n "$target" ] || { echo "用法: fpg-check.sh plan-lint <plan.md>"; exit 2; }; plan_lint "$target";;
   gate)      [ -n "$target" ] || { echo "用法: fpg-check.sh gate <epic-dir>"; exit 2; };      gate "$target";;
-  budget)    [ -n "$target" ] || { echo "用法: fpg-check.sh budget <epic-dir>"; exit 2; };    budget "$target";;
+  budget)    [ -n "$target" ] || { echo "用法: fpg-check.sh budget <epic-dir>"; exit 2; };    budget "$target"; exit 0;;
   *) echo "用法: fpg-check.sh {plan-lint <plan.md> | gate <epic-dir> | budget <epic-dir>}"; exit 2;;
 esac
+
+# —— 总判定（消除"退出码非零但只有 WARN"的歧义）——
+if [ "$STOP_N" -gt 0 ]; then
+  printf '判定：STOP（%d 项硬阻断 / %d 项提示）——必须停止并升级人类，不得绕过。\n' "$STOP_N" "$WARN_N"
+else
+  printf '判定：通过（0 硬阻断 / %d 项提示）——WARN 仅为提示，可继续本切片。\n' "$WARN_N"
+fi
 exit "$RC"
