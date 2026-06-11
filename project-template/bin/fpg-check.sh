@@ -111,11 +111,11 @@ gate() {
     planned=${nums% *}; cap=${nums#* }
     actual=$(_actual_sprints "$d")
     if [ "$actual" -gt "$cap" ]; then
-      stop budget_breach "实际 Sprint 数 $actual 已超硬上限 $cap（计划 $planned × 1.2）——自动 STOP，进人类 re-baseline（收口/砍范围/批准扩预算 三选一）"
+      stop budget_breach "实际 Sprint 数 ${actual} 已超硬上限 ${cap}（计划 ${planned} × 1.2）——自动 STOP，进人类 re-baseline（收口/砍范围/批准扩预算 三选一）"
     elif [ "$actual" -ge "$cap" ]; then
-      warn budget_edge "实际 Sprint 数 $actual 已达硬上限 $cap——本 Sprint 必须收口，不得再开新 Sprint"
+      warn budget_edge "实际 Sprint 数 ${actual} 已达硬上限 ${cap}——本 Sprint 必须收口，不得再开新 Sprint"
     else
-      ok budget "Sprint 预算：已用 $actual / 硬上限 $cap（计划 $planned）"
+      ok budget "Sprint 预算：已用 ${actual} / 硬上限 ${cap}（计划 ${planned}）"
     fi
   else
     warn budget_unparsed "无法从终止契约解析「Sprint 预算上限」数字——熔断无法机械判定"
