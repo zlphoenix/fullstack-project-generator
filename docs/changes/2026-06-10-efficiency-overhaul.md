@@ -50,7 +50,7 @@
 - [ ] T5 四份平台指南各瘦身至 ~80 行（只留项目特异约定 + 验证命令）。
 - [ ] T6 收尾记账 5 处→2 处（worklog/smoke-report 异常才写；普通切片只回填 plan 行 + PROGRESS 一行）。
 - [ ] T7 testing-strategy / deployment-guide 示例代码转可复制模板。
-- [ ] T8 Claude Code 侧 token 采集（transcript_path）。
+- [x] T8 Claude Code 侧 token 采集（transcript_path）。**已完成 2026-06-11**：新增 `telemetry/hooks/claude_usage.sh`（awk 单遍累加 transcript 每条 assistant 的 message.usage，整行取字段首次出现避开 iterations 重复，状态文件求差得回合增量）；接入 `tool_hook.sh` claude 分支。对真实 transcript 与 python 参考逐字段精确吻合。另修复：E/S/T 归因表与 token 解耦（commit 8e71399），使无 usage 的归因回合也可见。
 
 ### P2
 - [ ] T9 独立验收子 Agent 最小模板（只带 AC + 运行命令）。

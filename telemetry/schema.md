@@ -52,7 +52,7 @@
 ```
 
 - `total_tokens` 等为**会话累计**值；`turn_total_tokens` 为**本回合增量**（聚合用它，避免重复累计）。
-- 来源：Codex 由 `hooks/codex_usage.sh` 从会话 rollout JSONL 提取（已支持）；Claude Code 从 Stop hook 的 `transcript_path` 提取（待接入，P1）。
+- 来源：Codex 由 `hooks/codex_usage.sh` 从会话 rollout JSONL 提取；Claude Code 由 `hooks/claude_usage.sh` 从 Stop hook 的 `transcript_path` 提取。两者均已支持。
 - `emit.sh --usage '<json>'` 可显式附带（hook 内部已自动处理）。
 
 ## attrs 中的 E/S/T 归因 —— `.fpg/current-task` 标记文件

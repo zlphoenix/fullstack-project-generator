@@ -130,7 +130,7 @@ bun run report --db ./data/events.db --project my-app --format json
 
 | 问题 | 处理 |
 |---|---|
-| 看板 token 全为 0 | hook 没接上（重跑 `--wire-hooks`）或 Codex 日志解析不匹配（§3.5）；Claude Code 的 token 采集尚在 P1 计划 |
+| 看板 token 全为 0 | hook 没接上（重跑 `--wire-hooks`），或日志解析不匹配（§3.5）。Codex 与 Claude Code 均已支持 token 采集 |
 | 事件一条都没有 | 确认 `~/.fpg-telemetry/env.sh` 存在且 endpoint 可达；离线事件在 `~/.fpg-telemetry/queue/` 等待补传 |
 | 想暂时关掉度量 | `export FPG_TELEMETRY_DISABLED=1` |
 | Skill 没被触发 | 确认 `<项目>/.claude/skills/`（或 `.codex/skills/`）软链存在；说出 SKILL.md description 里的触发词 |

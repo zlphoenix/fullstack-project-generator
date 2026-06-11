@@ -58,8 +58,14 @@ fi
 
 # —— 真实 token 用量（仅 turn_complete 有意义）——
 usage_extra=""
-if [ "$etype" = "turn_complete" ] && [ "$FPG_TOOL" = "codex" ] && [ -n "$sessid" ]; then
-  usage=$(bash "$FPG_HOME/telemetry/hooks/codex_usage.sh" "$sessid" 2>/dev/null)
+if [ "$etype" = "turn_complete" ]; then
+  usage=""
+  if [ "$FPG_TOOL" = "codex" ] && [ -n "$sessid" ]; then
+    usage=$(bash "$FPG_HOME/telemetry/hooks/codex_usage.sh" "$sessid" 2>/dev/null)
+  elif [ "$FPG_TOOL" = "claude" ]; then
+    tpath=$(_field transcript_path)   # Claude Stop hook payload 带 transcript 路径
+    [ -n "$tpath" ] && usage=$(bash "$FPG_HOME/telemetry/hooks/claude_usage.sh" "$tpath" "$sessid" 2>/dev/null)
+  fi
   [ -n "$usage" ] && usage_extra=",\"usage\":$usage"
 fi
 
