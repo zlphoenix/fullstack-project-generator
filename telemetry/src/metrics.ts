@@ -164,6 +164,13 @@ function taskKey(epic: unknown, sprint: unknown, task: unknown): string {
 }
 
 const IDLE_GAP_HOURS = 0.5; // 同 session 相邻 turn 间隔超过 30 分钟视为空闲，不计入活跃耗时
+const UNATTRIBUTED_SKILL = "未归因";
+
+function eventSkillKey(event: TelemetryEvent): string {
+  const skill = event.skill.trim();
+  if (!skill || skill === event.tool) return UNATTRIBUTED_SKILL;
+  return skill;
+}
 
 export function computeMetrics(events: TelemetryEvent[]): Metrics {
   const byType: Record<string, number> = {};
@@ -192,7 +199,7 @@ export function computeMetrics(events: TelemetryEvent[]): Metrics {
     inc(byRole, e.actor_role);
     inc(byProject, e.project_id);
     inc(byMilestone, e.milestone || "(none)");
-    inc(bySkill, e.skill || "(none)");
+    inc(bySkill, eventSkillKey(e));
     if (e.event_type === "story_reopen") reworkCount++;
     if (e.event_type === "story_complete") storyCompleted++;
     if (e.event_type === "contract_change") contractChanges++;
@@ -212,7 +219,7 @@ export function computeMetrics(events: TelemetryEvent[]): Metrics {
       if (tokens !== null) {
         tokensTotal += tokens;
         addTokens(tokensByPhase, e.phase || "(none)", tokens);
-        addTokens(tokensBySkill, e.skill || "(none)", tokens);
+        addTokens(tokensBySkill, eventSkillKey(e), tokens);
       }
       // E/S/T 归因：只要带 epic/sprint/task 标记就计入（按回合），token 缺失记 0。
       // 与 token 解耦——让暂无 usage 的工具（如当前 Claude Code）会话也能看到归因。
@@ -401,6 +408,21 @@ function emptyActual(): ActualBucket {
   return { tokens: 0, active_hours: 0, sessions: new Set(), turns: 0, start: null, end: null };
 }
 
+function stringAttr(attrs: Record<string, unknown> | undefined, key: string): string {
+  const value = attrs?.[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function rememberName(names: Map<string, string>, projectId: string, level: "E" | "S" | "T", key: string, name: string) {
+  if (!key || !name) return;
+  const mapKey = `${projectId}\u0000${level}\u0000${key}`;
+  if (!names.has(mapKey)) names.set(mapKey, name);
+}
+
+function rememberedName(names: Map<string, string>, projectId: string, level: "E" | "S" | "T", key: string): string {
+  return names.get(`${projectId}\u0000${level}\u0000${key}`) ?? "";
+}
+
 function addActual(target: ActualBucket, source: ActualBucket) {
   target.tokens += source.tokens;
   target.active_hours += source.active_hours;
@@ -470,8 +492,15 @@ export function buildStats(events: TelemetryEvent[], options: BuildStatsOptions 
   const dims = { agent: {} as Record<string, number>, skill: {} as Record<string, number>, tool: {} as Record<string, number> };
   const developerBuckets = new Map<string, { tokens: number; active: number; tasks: Set<string> }>();
   const lastTs = new Map<string, string>();
+  const actualNames = new Map<string, string>();
 
   for (const event of filtered) {
+    const epicKey = typeof event.attrs?.epic === "string" ? event.attrs.epic : "";
+    const sprintKey = typeof event.attrs?.sprint === "string" ? event.attrs.sprint : "";
+    const taskId = typeof event.attrs?.task === "string" ? event.attrs.task : "";
+    rememberName(actualNames, event.project_id, "E", epicKey, stringAttr(event.attrs, "epic_name"));
+    rememberName(actualNames, event.project_id, "S", epicKey && sprintKey ? `${epicKey}/${sprintKey}/-` : "", stringAttr(event.attrs, "sprint_name"));
+    rememberName(actualNames, event.project_id, "T", epicKey && sprintKey && taskId ? `${epicKey}/${sprintKey}/${taskId}` : "", stringAttr(event.attrs, "task_name"));
     if (event.event_type === "session_start") {
       const sid = String(event.attrs?.session_id ?? "");
       if (sid) lastTs.set(sid, event.ts);
@@ -480,7 +509,7 @@ export function buildStats(events: TelemetryEvent[], options: BuildStatsOptions 
     if (event.event_type !== "turn_complete") continue;
     const tokens = turnTokens(event) ?? 0;
     addNumber(dims.agent, event.tool || "unknown", tokens);
-    addNumber(dims.skill, event.skill || "(none)", tokens);
+    addNumber(dims.skill, eventSkillKey(event), tokens);
     const tools = Array.isArray(event.attrs?.mcp_tools) ? event.attrs.mcp_tools.filter((tool) => typeof tool === "string") : [];
     if (tools.length === 0) addNumber(dims.tool, "无", tokens);
     for (const tool of tools) addNumber(dims.tool, tool, tokens);
@@ -537,7 +566,7 @@ export function buildStats(events: TelemetryEvent[], options: BuildStatsOptions 
     const node: NodeStat = {
       level,
       id,
-      name: planNode?.name ?? id,
+      name: planNode?.name ?? rememberedName(actualNames, projectId, level, level === "E" ? id : key),
       status,
       plan,
       actual,

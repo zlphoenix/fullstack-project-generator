@@ -41,7 +41,7 @@ esac
 # —— E/S/T 归因标记（Skill 写入，hook 附带）——
 _clean() { printf '%s' "$1" | tr -d '\000-\037"\\' ; }
 attrs_extra=""
-m_skill="$FPG_TOOL"; m_phase="turn"; m_milestone="${FPG_MILESTONE:-}"
+m_skill="${FPG_SKILL:-}"; m_phase="turn"; m_milestone="${FPG_MILESTONE:-}"
 marker="${cwd:-$PWD}/.fpg/current-task"
 if [ -f "$marker" ]; then
   while IFS='=' read -r k v; do
@@ -51,7 +51,7 @@ if [ -f "$marker" ]; then
       skill)     m_skill="$v";;
       phase)     m_phase="$v";;
       milestone) m_milestone="$v";;
-      epic|sprint|task|story|platform) attrs_extra="$attrs_extra,\"$k\":\"$v\"";;
+      epic|sprint|task|story|platform|epic_name|sprint_name|task_name) attrs_extra="$attrs_extra,\"$k\":\"$v\"";;
     esac
   done < "$marker"
 fi

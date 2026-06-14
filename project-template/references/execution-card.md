@@ -12,7 +12,7 @@
 5. 与用户确认本次切片（平台/上下文边界，可含同边界多个 Task）；把 Task 行状态改 `执行中`。
 6. 写归因标记（hook 自动采集 token/耗时，模型不记账）：
    ```bash
-   mkdir -p .fpg && printf 'epic=E001\nsprint=S001\ntask=T001\nplatform=backend\nskill=sprint-develop\nphase=sprint_develop\n' > .fpg/current-task
+   mkdir -p .fpg && printf 'epic=E001\nepic_name=用户登录\nsprint=S001\nsprint_name=登录闭环\ntask=T001\ntask_name=实现登录接口\nplatform=backend\nskill=sprint-develop\nphase=sprint_develop\n' > .fpg/current-task
    ```
 7. 状态既已置 `执行中`，best-effort 同步计划侧到遥测（失败不阻断、不影响切片）：
    ```bash

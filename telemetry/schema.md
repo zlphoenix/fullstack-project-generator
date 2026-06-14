@@ -100,14 +100,17 @@ token/耗时归因到 Epic/Sprint/Task 靠项目根的 `.fpg/current-task`（k=v
 
 ```text
 epic=E001
+epic_name=统计细化
 sprint=S001
+sprint_name=看板下钻
 task=T003
+task_name=实现关注配置
 platform=backend
 skill=sprint-develop
 phase=sprint_develop
 ```
 
-hook 上报时自动读取：`epic/sprint/task/story/platform` 并入 attrs；`skill/phase/milestone` 覆盖事件同名字段。文件不存在时事件照常发出（仅无归因）。该文件应加入用户项目 `.gitignore`。
+hook 上报时自动读取：`epic/sprint/task/story/platform` 与可选的 `epic_name/sprint_name/task_name` 并入 attrs；`skill/phase/milestone` 覆盖事件同名字段。`*_name` 用于无 `plan_sync` 快照时显示明确记录过的中文短名；没有记录则看板留空，不用 ID 猜。文件不存在时事件照常发出（仅无归因）。该文件应加入用户项目 `.gitignore`。
 
 ## 示例
 

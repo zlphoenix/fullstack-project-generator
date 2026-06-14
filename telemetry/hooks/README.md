@@ -37,7 +37,7 @@ bash <FPG_HOME>/telemetry/hooks/tool_hook.sh claude    # Claude Code
    - 解析按宽松匹配实现；Codex 版本差异导致解析失败时静默跳过（事件照发，仅无 usage）。**接入新版本 Codex 后先抽查一条事件确认字段仍能解析。**
    - **Claude Code（已支持）**：`claude_usage.sh` 读 Stop hook payload 的 `transcript_path`，awk 单遍累加每条 assistant 的 `message.usage`（`input_tokens`+`cache_creation_input_tokens`+`cache_read_input_tokens`+`output_tokens`，每个字段取整行首次出现以避开 `iterations` 数组重复），状态文件求差得回合增量。
 2. **E/S/T 归因**：读 `<cwd>/.fpg/current-task`（k=v 每行，由 Skill 在切片开始写、结束删）：
-   `epic/sprint/task/story/platform` 并入 attrs；`skill/phase/milestone` 覆盖事件同名字段。
+   `epic/sprint/task/story/platform` 与可选的 `epic_name/sprint_name/task_name` 并入 attrs；`skill/phase/milestone` 覆盖事件同名字段。没有标记文件时不再把 `codex/claude` 写成 Skill，避免 Agent 与 Skill 维度混淆。
 
 聚合结果看 collector 的 **`GET /report` 度量看板**：各阶段/Skill/Task 的 token、活跃耗时、skill 命中。
 

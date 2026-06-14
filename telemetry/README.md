@@ -53,7 +53,17 @@ export FPG_TOOL="claude"         # claude|codex（install.sh 按工具分别写�
 
 **新版统计看板**（浏览器）：`http://localhost:10000/report[?project=my-app][&actor=<actor_id>]`
 
+`/report` 不是离线静态文件；collector 每次收到请求都会从 SQLite 读取事件并即时调用 `buildStats()` 聚合。新增事件或 `plan_sync` 后刷新浏览器即可看到；只有修改了 collector/dashboard 代码或换了 `.env` 启动配置，才需要重启 collector。
+
 看板读取 `GET /stats`，展示项目 → Epic → Sprint → Task 下钻、计划/实际/偏差、状态疑似过期徽标、并行甘特（时/天/周）、Agent/Skill/Tool 三维度、开发者维度，以及按 `actor_id` 持久化的关注项目/视角。
+
+说明：
+- 下钻里的 E/S/T 名称优先来自 `plan-sync.sh` 解析到的 plan；若只有历史 instrumentation 归因而没有 plan 快照，名称为空，不用 ID 猜。
+- `.fpg/current-task` 可选写 `epic_name` / `sprint_name` / `task_name`，用于无 plan 快照时补充明确记录过的中文短名。
+- 计划列 `0 / —` 表示该节点没有匹配到计划估算基线；运行对应项目的 `plan-sync.sh` 后才会出现计划值。
+- 状态旁的“⚠ 状态疑似过期”表示有实测活动但 plan 状态仍是未开始/空，或父子状态不一致；看板只提示，不自动改 plan。
+- Tool 维度的“未调用 MCP”对应 `/stats` JSON 里的键 `"无"`，表示该 turn 没记录到 MCP 工具调用。
+- 开发者数量按 `actor_id` 去重；同一个人如果用了不同 `FPG_ACTOR_ID`，会显示为多个开发者。
 
 ### 4) 重启 collector 并打开新版看板
 

@@ -46,12 +46,12 @@
 模型唯一要做的：**切片开始时写归因标记，结束时删除**——
 
 ```bash
-mkdir -p .fpg && printf 'epic=E001\nsprint=S001\ntask=T001\nplatform=backend\nskill=sprint-develop\nphase=sprint_develop\n' > .fpg/current-task
+mkdir -p .fpg && printf 'epic=E001\nepic_name=用户登录\nsprint=S001\nsprint_name=登录闭环\ntask=T001\ntask_name=实现登录接口\nplatform=backend\nskill=sprint-develop\nphase=sprint_develop\n' > .fpg/current-task
 # …… 切片收尾 ……
 rm -f .fpg/current-task
 ```
 
-hook 自动把标记附到每个遥测事件上，token/耗时即归因到对应 E/S/T。`.fpg/current-task` 应加入 `.gitignore`。
+hook 自动把标记附到每个遥测事件上，token/耗时即归因到对应 E/S/T；`*_name` 是可选中文短名，供无 plan 快照时展示。`.fpg/current-task` 应加入 `.gitignore`。
 业务里程碑事件（`story_complete`/`contract_change`/`verification` 等）仍可由 SKILL 调 `emit.sh` best-effort 发出（字段见生成器仓库 `telemetry/schema.md`），但**不再要求携带任何 token/耗时数字**。
 
 > 隐私：只采流程元数据，不采代码/PII。度量用于改进，不作个人考核。

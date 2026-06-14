@@ -469,9 +469,73 @@ describe("buildStats", () => {
     const unplannedEpic = p1?.epics.find((node) => node.id === "E009");
     expect(unplannedEpic?.status).toBe("");
     expect(unplannedEpic?.plan).toEqual({ estimate_tokens: [0, 0], estimate_hours: null });
+    expect(unplannedEpic?.name).toBe("");
     expect(unplannedEpic?.actual.tokens).toBe(100);
     expect(unplannedEpic?.deviation).toEqual({ tokens: null, hours: null });
     expect(unplannedEpic?.source_url).toBeNull();
+  });
+
+  test("历史 hook 将工具名写入 skill 时不混入 Skill 维度", () => {
+    const stats = buildStats([
+      ev({
+        event_type: "turn_complete",
+        project_id: "p-skill",
+        tool: "codex",
+        skill: "codex",
+        attrs: { usage: { turn_total_tokens: 100 } },
+      }),
+      ev({
+        event_type: "turn_complete",
+        project_id: "p-skill",
+        tool: "codex",
+        skill: "sprint-develop",
+        attrs: { usage: { turn_total_tokens: 200 } },
+      }),
+    ]);
+
+    expect(stats.dims.agent.find((item) => item.k === "codex")?.tokens).toBe(300);
+    expect(stats.dims.skill.find((item) => item.k === "codex")).toBeUndefined();
+    expect(stats.dims.skill.find((item) => item.k === "未归因")?.tokens).toBe(100);
+    expect(stats.dims.skill.find((item) => item.k === "sprint-develop")?.tokens).toBe(200);
+  });
+
+  test("无计划快照时优先使用 current-task 的中文名称，缺失则留空", () => {
+    const stats = buildStats([
+      ev({
+        event_type: "turn_complete",
+        project_id: "p-names",
+        attrs: {
+          epic: "E100",
+          sprint: "S001",
+          task: "T001",
+          epic_name: "统计细化",
+          sprint_name: "看板下钻",
+          task_name: "修正展示口径",
+          usage: { turn_total_tokens: 10 },
+        },
+      }),
+      ev({
+        event_type: "turn_complete",
+        project_id: "p-names",
+        attrs: {
+          epic: "E101",
+          sprint: "S001",
+          task: "T001",
+          usage: { turn_total_tokens: 10 },
+        },
+      }),
+    ]);
+
+    const project = stats.projects.find((item) => item.id === "p-names");
+    const namedEpic = project?.epics.find((item) => item.id === "E100");
+    const unnamedEpic = project?.epics.find((item) => item.id === "E101");
+
+    expect(namedEpic?.name).toBe("统计细化");
+    expect(namedEpic?.children[0].name).toBe("看板下钻");
+    expect(namedEpic?.children[0].children[0].name).toBe("修正展示口径");
+    expect(unnamedEpic?.name).toBe("");
+    expect(unnamedEpic?.children[0].name).toBe("");
+    expect(unnamedEpic?.children[0].children[0].name).toBe("");
   });
 
   test("父级 sessions 使用真实 session 去重，同一 session 多任务不重复计数", () => {
