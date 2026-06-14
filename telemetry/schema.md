@@ -1,4 +1,4 @@
-# 遥测事件 Schema（v1）
+# 遥测事件 Schema（v2）
 
 所有埋点客户端（`emit.sh`）发送、收集器（collector）入库、报表（report）消费的统一事件结构。
 **原则：只采集流程元数据，不采集代码内容或个人隐私（PII）。**
@@ -7,7 +7,7 @@
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `schema_version` | int | ✅ | 固定为 `1`，用于演进兼容 |
+| `schema_version` | int | ✅ | 当前为 `2`；旧事件缺省仍按 `1` 兼容 |
 | `event_id` | string | ✅ | 客户端生成的唯一 ID（uuid 或 时间戳+随机） |
 | `ts` | string(ISO8601 UTC) | ✅ | 事件发生时间，如 `2026-05-30T08:12:30Z` |
 | `actor_role` | enum | ✅ | `dev` \| `product` \| `qa` \| `ops` \| `pm` \| `unknown` |
@@ -36,8 +36,47 @@
 | `verification` | 一次验证/验收（编译/测试/AC） | `kind`(compile\|test\|ac\|e2e), `outcome` |
 | `session_start` | 会话开始（**工具 hook 自动**：Claude SessionStart） | `hook`, `session_id` |
 | `turn_complete` | 一个 agent 回合结束（**工具 hook 自动**：Codex notify / Claude Stop） | `codex_event`/`hook`, `turn_id`, `session_id`, `usage`, E/S/T 归因 |
+| `plan_sync` | `plan-sync.sh` 同步计划侧 E/S/T 快照 | `plan` |
 
 > `session_start` / `turn_complete` 由**工具侧 hook 自动发出**（见 `hooks/`），不依赖模型在 SKILL 里自觉调用 emit——这是"使用即度量"可靠性的关键。其余事件仍由 SKILL 在关键时机 best-effort 发出。
+
+## attrs.plan —— 计划侧快照（schema_version=2）
+
+`plan_sync` 事件将 `plan.md` 治理结构以快照形式写入 `attrs.plan`：
+
+```json
+{
+  "root": "E002",
+  "generated_at": "2026-06-14T00:00:00.000Z",
+  "nodes": [
+    {
+      "level": "T",
+      "id": "T001",
+      "parent": "S001",
+      "name": "schema + store",
+      "category": "Must Deliver",
+      "status": "已验证",
+      "deps": [],
+      "estimate_tokens": [25000, 45000],
+      "estimate_hours": null,
+      "source": {
+        "repo_url": "https://github.com/org/repo",
+        "commit": "abc123",
+        "path": "docs/iteration/epics/E002-metrics-refinement/sprints/S001-plan-ingest-identity/plan.md",
+        "heading": "Task 清单与指标",
+        "line": 24,
+        "abs_path": "/abs/path/plan.md"
+      },
+      "planned_start": null,
+      "planned_end": null
+    }
+  ]
+}
+```
+
+- `attrs.plan.root` 必须是非空字符串，`attrs.plan.nodes` 必须是数组，否则整条事件拒绝。
+- node 级校验宽松：缺 `level` 或 `id` 的 node 丢弃；其余字段按设计默认值补齐。
+- 存储仍 append-only 写 `events`；读侧按 `(project_id, root)` 取最新 `plan_sync` 作为当前计划快照。
 
 ## attrs.usage —— 真实 token 用量（instrumentation，模型零参与）
 

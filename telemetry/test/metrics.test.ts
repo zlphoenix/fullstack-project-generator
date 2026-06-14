@@ -44,6 +44,70 @@ describe("validateEvent", () => {
     expect(validateEvent({ event_type: "turn_complete", project_id: "p" }).ok).toBe(true);
     expect(validateEvent({ event_type: "session_start", project_id: "p" }).ok).toBe(true);
   });
+
+  test("接受合法 plan_sync 并补齐 node 缺省字段", () => {
+    const v = validateEvent({
+      schema_version: 2,
+      event_type: "plan_sync",
+      project_id: "p",
+      attrs: {
+        plan: {
+          root: "E002",
+          generated_at: "2026-06-14T00:00:00.000Z",
+          nodes: [{ level: "T", id: "T001", parent: "S001", name: "schema store" }],
+        },
+      },
+    });
+
+    expect(v.ok).toBe(true);
+    const plan = v.event?.attrs.plan as { nodes: Record<string, unknown>[] };
+    expect(v.event?.schema_version).toBe(2);
+    expect(plan.nodes[0].deps).toEqual([]);
+    expect(plan.nodes[0].estimate_tokens).toEqual([0, 0]);
+    expect(plan.nodes[0].estimate_hours).toBeNull();
+    expect(plan.nodes[0].status).toBe("未开始");
+    expect(plan.nodes[0].category).toBe("");
+    expect(plan.nodes[0].source).toEqual({
+      repo_url: "",
+      commit: "",
+      path: "",
+      heading: "",
+      line: 0,
+      abs_path: "",
+    });
+  });
+
+  test("拒绝缺 root 或 nodes 的 plan_sync", () => {
+    expect(
+      validateEvent({ event_type: "plan_sync", project_id: "p", attrs: { plan: { nodes: [] } } }).ok,
+    ).toBe(false);
+    expect(
+      validateEvent({ event_type: "plan_sync", project_id: "p", attrs: { plan: { root: "E002" } } }).ok,
+    ).toBe(false);
+  });
+
+  test("plan_sync 丢弃坏 node 并保留好 node", () => {
+    const v = validateEvent({
+      event_type: "plan_sync",
+      project_id: "p",
+      attrs: {
+        plan: {
+          root: "E002",
+          generated_at: "2026-06-14T00:00:00.000Z",
+          nodes: [
+            { level: "T" },
+            { id: "T000" },
+            { level: "T", id: "T001", parent: "S001", deps: "T000" },
+          ],
+        },
+      },
+    });
+
+    expect(v.ok).toBe(true);
+    const plan = v.event?.attrs.plan as { nodes: Record<string, unknown>[] };
+    expect(plan.nodes.map((node) => node.id)).toEqual(["T001"]);
+    expect(plan.nodes[0].deps).toEqual([]);
+  });
 });
 
 describe("computeMetrics", () => {
@@ -192,6 +256,96 @@ describe("EventStore", () => {
     store.insert(ev({ event_type: "skill_start", project_id: "p2" }));
     expect(store.count()).toBe(2);
     expect(store.all({ project_id: "p1" }).length).toBe(1);
+    store.close();
+  });
+
+  test("latestPlanSnapshots 对同 project/root 取最新", () => {
+    const store = new EventStore(":memory:");
+    const older = ev({
+      schema_version: 2,
+      event_id: "plan-old",
+      event_type: "plan_sync",
+      project_id: "p1",
+      ts: "2026-06-14T00:00:00.000Z",
+      attrs: {
+        plan: {
+          root: "E002",
+          generated_at: "2026-06-14T00:00:00.000Z",
+          nodes: [{ level: "T", id: "T001", parent: "S001", name: "old" }],
+        },
+      },
+    });
+    const newer = ev({
+      schema_version: 2,
+      event_id: "plan-new",
+      event_type: "plan_sync",
+      project_id: "p1",
+      ts: "2026-06-14T01:00:00.000Z",
+      attrs: {
+        plan: {
+          root: "E002",
+          generated_at: "2026-06-14T01:00:00.000Z",
+          nodes: [{ level: "T", id: "T001", parent: "S001", name: "new" }],
+        },
+      },
+    });
+    const otherProject = ev({
+      schema_version: 2,
+      event_id: "plan-other",
+      event_type: "plan_sync",
+      project_id: "p2",
+      ts: "2026-06-14T02:00:00.000Z",
+      attrs: { plan: { root: "E002", generated_at: "2026-06-14T02:00:00.000Z", nodes: [] } },
+    });
+
+    store.insert(older);
+    store.insert(newer);
+    store.insert(otherProject);
+
+    const all = store.latestPlanSnapshots();
+    expect(all.length).toBe(2);
+    expect(all.find((plan) => plan.root === "E002" && plan.nodes.length > 0)?.nodes[0].name).toBe("new");
+    const p1 = store.latestPlanSnapshots("p1");
+    expect(p1.length).toBe(1);
+    expect(p1[0].nodes[0].name).toBe("new");
+    store.close();
+  });
+
+  test("actors 空表迁移回填 Allen，改名不改 events.actor_id，无行回退字面 id", () => {
+    const store = new EventStore(":memory:");
+    store.insert(ev({ actor_id: "allen-id", event_id: "actor-event-1" }));
+
+    expect(store.listActors()).toEqual([
+      { actor_id: "allen-id", display_name: "Allen", role: "dev" },
+    ]);
+    expect(store.resolveName("allen-id")).toBe("Allen");
+
+    const renamed = store.upsertActor({ actor_id: "allen-id", display_name: "Allen Zhang", role: "dev" });
+    expect(renamed.display_name).toBe("Allen Zhang");
+    expect(store.resolveName("allen-id")).toBe("Allen Zhang");
+    expect(store.all()[0].actor_id).toBe("allen-id");
+    expect(store.resolveName("missing-id")).toBe("missing-id");
+    store.close();
+  });
+
+  test("user_prefs 支持 upsert 往返并在无行时派生默认", () => {
+    const store = new EventStore(":memory:");
+    store.insert(ev({ actor_id: "pm-1", actor_role: "pm", project_id: "p1", event_id: "pref-1" }));
+    store.insert(ev({ actor_id: "pm-1", actor_role: "pm", project_id: "p2", event_id: "pref-2" }));
+    store.upsertActor({ actor_id: "pm-1", display_name: "Pat", role: "pm" });
+
+    expect(store.getPrefs("pm-1")).toEqual({
+      actor_id: "pm-1",
+      watched_projects: ["p1", "p2"],
+      role_view: "boss",
+    });
+
+    store.upsertPrefs("pm-1", { watched_projects: ["p2"], role_view: "qa" });
+    expect(store.getPrefs("pm-1")).toEqual({
+      actor_id: "pm-1",
+      watched_projects: ["p2"],
+      role_view: "qa",
+    });
     store.close();
   });
 });
