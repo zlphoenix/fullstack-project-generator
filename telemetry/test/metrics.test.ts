@@ -9,6 +9,7 @@ import {
   criticalPath,
   githubSlug,
 } from "../src/metrics.ts";
+import { renderStatsDashboard } from "../src/dashboard.ts";
 import { createTelemetryHandler } from "../src/server.ts";
 import { validateEvent } from "../src/schema.ts";
 import { EventStore } from "../src/store.ts";
@@ -776,6 +777,61 @@ graph LR
     expect(exitCode).toBe(0);
     expect(stdout).toContain("WARN status_consistency");
     expect(stdout).toContain("状态过期：父级应至少为执行中");
+  });
+});
+
+describe("dashboard", () => {
+  test("renderStatsDashboard 输出看板锚点与状态漂移徽标", () => {
+    const stats = {
+      generated_at: "2026-06-14T00:00:00.000Z",
+      viewer: { actor_id: "dev-a", display_name: "Dev A", role_view: "dev", watched_projects: ["p1"] },
+      projects: [
+        {
+          level: "P",
+          id: "p1",
+          name: "p1",
+          status: "",
+          plan: { estimate_tokens: [0, 0], estimate_hours: null },
+          actual: { tokens: 1200, active_hours: 1.2, sessions: 1, turns: 2 },
+          deviation: { tokens: null, hours: null },
+          source_url: null,
+          status_drift: { drift: true, reason: "有实测活动但状态仍未开始" },
+          gantt: { start: "2026-06-14T00:00:00Z", end: "2026-06-14T02:00:00Z", status4: "执行中", blocked: false, critical: false, deps: [] },
+          children: [],
+          epics: [
+            {
+              level: "E",
+              id: "E001",
+              name: "Epic",
+              status: "未开始",
+              plan: { estimate_tokens: [1000, 2000], estimate_hours: 2 },
+              actual: { tokens: 1200, active_hours: 1.2, sessions: 1, turns: 2 },
+              deviation: { tokens: -300, hours: -0.8 },
+              source_url: "vscode://file//tmp/plan.md:1",
+              status_drift: { drift: true, reason: "有实测活动但状态仍未开始" },
+              gantt: { start: "2026-06-14T00:00:00Z", end: "2026-06-14T02:00:00Z", status4: "执行中", blocked: false, critical: true, deps: [] },
+              children: [],
+            },
+          ],
+        },
+      ],
+      dims: {
+        agent: [{ k: "codex", tokens: 1200 }],
+        skill: [{ k: "sprint-develop", tokens: 1200 }],
+        tool: [{ k: "无", tokens: 1200 }],
+      },
+      developers: [{ actor_id: "dev-a", display_name: "Dev A", tokens: 1200, active_hours: 1.2, tasks_done: 1 }],
+    };
+
+    const html = renderStatsDashboard(stats);
+    expect(html).toContain('id="gantt"');
+    expect(html).toContain('id="v-drill"');
+    expect(html).toContain('id="dim-agent"');
+    expect(html).toContain('id="dim-skill"');
+    expect(html).toContain('id="dim-tool"');
+    expect(html).toContain("关键路径");
+    expect(html).toContain("⚠ 状态疑似过期");
+    expect(html).toContain('title="有实测活动但状态仍未开始"');
   });
 });
 
