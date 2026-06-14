@@ -88,6 +88,26 @@ export function createTelemetryHandler(store: EventStore, token: string) {
       );
     }
 
+    if (url.pathname === "/api/prefs") {
+      const actor = url.searchParams.get("actor")?.trim() ?? "";
+      if (!actor) return json({ error: "missing actor" }, 400);
+      if (req.method === "GET") return json(store.getPrefs(actor));
+      if (req.method === "PUT") {
+        if (!authorized(req, token)) return json({ error: "unauthorized" }, 401);
+        const body = await readJson(req);
+        if (typeof body !== "object" || body === null) return json({ error: "invalid json" }, 400);
+        const patch = body as { watched_projects?: unknown; role_view?: unknown };
+        return json(
+          store.upsertPrefs(actor, {
+            watched_projects: Array.isArray(patch.watched_projects)
+              ? patch.watched_projects.filter((item): item is string => typeof item === "string")
+              : undefined,
+            role_view: typeof patch.role_view === "string" ? patch.role_view : undefined,
+          }),
+        );
+      }
+    }
+
     if (req.method === "POST" && url.pathname === "/events") {
       if (!authorized(req, token)) return json({ error: "unauthorized" }, 401);
       let body: unknown;

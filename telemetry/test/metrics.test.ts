@@ -834,6 +834,57 @@ describe("server actors API", () => {
   });
 });
 
+describe("server prefs API", () => {
+  test("GET/PUT /api/prefs 往返，缺 actor 返回 400，PUT 使用 Bearer 鉴权", async () => {
+    const store = new EventStore(":memory:");
+    store.insert(ev({ actor_id: "pm-2", actor_role: "pm", project_id: "p-a", event_id: "prefs-route-1" }));
+    store.insert(ev({ actor_id: "pm-2", actor_role: "pm", project_id: "p-b", event_id: "prefs-route-2" }));
+    store.upsertActor({ actor_id: "pm-2", display_name: "PM Two", role: "pm" });
+    const fetch = createTelemetryHandler(store, "secret");
+
+    const missing = await fetch(new Request("http://local/api/prefs"));
+    expect(missing.status).toBe(400);
+
+    const derived = await fetch(new Request("http://local/api/prefs?actor=pm-2"));
+    expect(derived.status).toBe(200);
+    expect(await derived.json()).toEqual({
+      actor_id: "pm-2",
+      watched_projects: ["p-a", "p-b"],
+      role_view: "boss",
+    });
+
+    const denied = await fetch(
+      new Request("http://local/api/prefs?actor=pm-2", {
+        method: "PUT",
+        body: JSON.stringify({ watched_projects: ["p-b"], role_view: "qa" }),
+      }),
+    );
+    expect(denied.status).toBe(401);
+
+    const saved = await fetch(
+      new Request("http://local/api/prefs?actor=pm-2", {
+        method: "PUT",
+        headers: { Authorization: "Bearer secret" },
+        body: JSON.stringify({ watched_projects: ["p-b"], role_view: "qa" }),
+      }),
+    );
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toEqual({
+      actor_id: "pm-2",
+      watched_projects: ["p-b"],
+      role_view: "qa",
+    });
+
+    const after = await fetch(new Request("http://local/api/prefs?actor=pm-2"));
+    expect(await after.json()).toEqual({
+      actor_id: "pm-2",
+      watched_projects: ["p-b"],
+      role_view: "qa",
+    });
+    store.close();
+  });
+});
+
 describe("server stats API", () => {
   test("GET /stats 返回 buildStats 契约形状并带 viewer", async () => {
     const store = new EventStore(":memory:");
