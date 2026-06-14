@@ -23,10 +23,10 @@ S001 = 单一退出场景组（数据通路 + 身份）。Task 数 4（含验证
 
 | ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 估计Token | 证据 |
 |---|---|---|---|---|---|---|---|
-| T001 | schema + store：plan_sync 校验、actors/user_prefs 表与读写 | Must Deliver | — | 否 | 已验证 | 25k–45k | `cd telemetry && bun test`；`bash project-template/bin/fpg-check.sh plan-lint docs/iteration/epics/E002-metrics-refinement/sprints/S001-plan-ingest-identity/plan.md` |
-| T002 | plan-sync.sh 解析客户端（--dry-run 可测） | Must Deliver | T001 | 是(与 T003) | 已验证 | 25k–45k | `cd telemetry && bun test`；`bash project-template/bin/fpg-check.sh plan-lint docs/iteration/epics/E002-metrics-refinement/sprints/S001-plan-ingest-identity/plan.md` |
-| T003 | 身份 id/name 分离：迁移回填 Allen + /api/actors + install 询问 | Must Deliver | T001 | 是(与 T002) | 已验证 | 20k–35k | `cd telemetry && bun test`；`bash scripts/install.sh --project-dir . --tools codex --telemetry-endpoint http://127.0.0.1:65535 --user test-user --dry-run`；`bash project-template/bin/fpg-check.sh plan-lint docs/iteration/epics/E002-metrics-refinement/sprints/S001-plan-ingest-identity/plan.md` |
-| T004 | Skill 接入：sprint-plan/project-requirements 收尾调用 plan-sync.sh | Must Verify | T002 | 否 | 已验证 | 10k–20k | `cd telemetry && bun test`；`bash project-template/bin/fpg-check.sh plan-lint docs/iteration/epics/E002-metrics-refinement/sprints/S001-plan-ingest-identity/plan.md` |
+| T001 | schema + store：plan_sync 校验、actors/user_prefs 表与读写 | Must Deliver | — | 否 | 已完成 | 25k–45k | `cd telemetry && bun test`；`bash project-template/bin/fpg-check.sh plan-lint docs/iteration/epics/E002-metrics-refinement/sprints/S001-plan-ingest-identity/plan.md` |
+| T002 | plan-sync.sh 解析客户端（--dry-run 可测） | Must Deliver | T001 | 是(与 T003) | 已完成 | 25k–45k | `cd telemetry && bun test`；`bash project-template/bin/fpg-check.sh plan-lint docs/iteration/epics/E002-metrics-refinement/sprints/S001-plan-ingest-identity/plan.md` |
+| T003 | 身份 id/name 分离：迁移回填 Allen + /api/actors + install 询问 | Must Deliver | T001 | 是(与 T002) | 已完成 | 20k–35k | `cd telemetry && bun test`；`bash scripts/install.sh --project-dir . --tools codex --telemetry-endpoint http://127.0.0.1:65535 --user test-user --dry-run`；`bash project-template/bin/fpg-check.sh plan-lint docs/iteration/epics/E002-metrics-refinement/sprints/S001-plan-ingest-identity/plan.md` |
+| T004 | Skill 接入：sprint-plan/project-requirements 收尾调用 plan-sync.sh | Must Verify | T002 | 否 | 已完成 | 10k–20k | `cd telemetry && bun test`；`bash project-template/bin/fpg-check.sh plan-lint docs/iteration/epics/E002-metrics-refinement/sprints/S001-plan-ingest-identity/plan.md` |
 
 ### Task 细则（照做）
 

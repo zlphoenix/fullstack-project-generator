@@ -7,7 +7,7 @@
 | ID | 名称 | 目标 | 状态 | 创建时间 | 开始时间 | 结束时间 | 主动耗时 | 等待耗时 | 估计Token | 实际Token | 偏差原因 | 证据 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | E001 | 迭代治理与并行任务规范固化 | 将 E/S/T 层级、plan.md 唯一真源、中文状态、关键路径、依赖图、耗时/token 度量和并行边界固化进 Skill | 已完成 | 2026-06-03 | 2026-06-03 15:00 CST | 2026-06-04 16:06 CST | 28m | 0m | 113k-205k | ~95k | 追加合入 industry Sprint 4 复盘规则、plan 依赖图要求和中文状态流转；未实现自动 token 采集 | [plan](epics/E001-iteration-governance/plan.md) |
-| E002 | 统计细化（需求实现过程精细化度量） | 计划侧经 plan_sync 入遥测并与 hook 实测 join；身份 id/name 分离；看板升级为下钻+并行甘特+关键路径+按用户关注/视角 | 未开始 | 2026-06-14 | — | — | 遥测 | 遥测 | 150k-300k | 遥测 | — | [plan](epics/E002-metrics-refinement/plan.md) ・ [design](epics/E002-metrics-refinement/design.md) |
+| E002 | 统计细化（需求实现过程精细化度量） | 计划侧经 plan_sync 入遥测并与 hook 实测 join；身份 id/name 分离；看板升级为下钻+并行甘特+关键路径+按用户关注/视角 | 执行中 | 2026-06-14 | 2026-06-14 | — | 遥测 | 遥测 | 170k-330k | 遥测 | S001 已完成；S002 待开发 | [plan](epics/E002-metrics-refinement/plan.md) ・ [design](epics/E002-metrics-refinement/design.md) |
 
 ## 汇总指标
 
@@ -15,12 +15,12 @@
 |---|---|
 | Epic 总数 | 2 |
 | 已完成 | 1 |
-| 执行中 | 0 |
-| 未开始 | 1 |
+| 执行中 | 1 |
+| 未开始 | 0 |
 | 搁置 | 0 |
 | 总主动耗时 | 28m（实测对照遥测看板 GET /report） |
 | 总等待耗时 | 0m |
-| 总估计Token | 263k-505k |
+| 总估计Token | 283k-535k |
 | 总实际Token | 实测对照遥测看板 |
 
 ## 规则

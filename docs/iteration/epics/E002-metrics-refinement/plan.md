@@ -32,7 +32,7 @@
 | Definition-of-Done | 针对一个**真实跑过 Sprint 的项目**，在浏览器看板上可下钻 E/S/T 看到「计划 / 实际 / 偏差」三列（实际 token 与耗时来自工具 hook，非手填）、并行甘特与关键路径可读、可改显示名且历史归属不变、可保存关注——全部真实数据驱动。mock/结构同构/单测通过不单独构成 DoD。 |
 | DoD 验收证据 | 对本仓库 `docs/iteration`（E001/E002）跑通：`sprint-plan` → `plan-sync.sh` → collector 收到 `plan_sync`；执行期 hook 自动产生带 E/S/T 归因的 `turn_complete`；浏览器 `GET /report` 下钻截图 + `GET /stats` JSON 各一份留 `evidence/`。 |
 | Sprint 预算上限 | 2（硬上限 = 计划 × 1.2 ≈ 2，超出即 re-baseline） |
-| Token 预算上限 | 150k–300k；硬上限 = 上界 × 1.2 = 360k（实际消耗对照遥测看板，不手工记账） |
+| Token 预算上限 | 170k–330k；硬上限 = 上界 × 1.2 ≈ 396k（实际消耗对照遥测看板，不手工记账） |
 | 退出场景（必须全绿） | ①计划入库与同步 ②下钻看偏差 ③并行甘特+关键路径 ④身份改名与关注持久化（见下） |
 | 明确不做（out-of-scope） | 前端框架/构建链；远端多租户鉴权；阶段 cycle-time；PII/代码内容采集 |
 | 外部依赖与责任人 | 工具 hook 已安装并能产出 `turn_complete`（`claude_usage.sh`/`codex_usage.sh`）——Allen 负责本机配置；无远端依赖 |
@@ -52,8 +52,8 @@ Epic + 2 Sprint（[治理规范 §10](../../../../project-template/references/it
 
 | ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 估计Token | 证据 |
 |---|---|---|---|---|---|---|---|
-| S001 | 计划侧入遥测与身份 | Must Deliver | — | 否 | 未开始 | 80k–150k | [design.md](design.md) |
-| S002 | 看板下钻·甘特·关注 | Must Deliver | S001 | 否 | 未开始 | 70k–150k | [design.md](design.md) |
+| S001 | 计划侧入遥测与身份 | Must Deliver | — | 否 | 已完成 | 80k–150k | [design.md](design.md) |
+| S002 | 看板下钻·甘特·关注 | Must Deliver | S001 | 否 | 未开始 | 90k–175k | [design.md](design.md) |
 
 > Task 级清单在各 Sprint 的 `sprints/S00N-*/plan.md`（执行期由 `sprint-plan` 生成）；本文只记直接下级（Sprint）。S001 预拆：`schema/store + plan_sync` → `plan-sync.sh 客户端` → `身份 id/name + install 询问` → `Skill 接入自动同步`。S002 预拆：`/stats 契约` → `原生单页（甘特/下钻/开发者/视角）` → `关注 prefs 持久化`。实测 token/耗时一律来自遥测，**不在 plan.md 手填实际值**。
 

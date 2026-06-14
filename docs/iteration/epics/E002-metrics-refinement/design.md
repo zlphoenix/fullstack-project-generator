@@ -158,6 +158,7 @@ interface NodeStat {
   actual: { tokens: number; active_hours: number; sessions: number; turns: number };
   deviation: { tokens: number|null; hours: number|null };  // null=无计划基线
   source_url: string|null;          // §7 计算好的可点链接
+  status_drift: { drift: boolean; reason: string };  // §6.1 状态疑似过期/不一致
   gantt: { start: string|null; end: string|null; status4: "未开始"|"执行中"|"已挂起"|"已关闭"; blocked: boolean; critical: boolean; deps: string[] };
   children: NodeStat[];
 }
@@ -170,6 +171,27 @@ interface ProjectStat extends Omit<NodeStat,"level"> { level: "P"; epics: NodeSt
 - **plan 缺失**（没跑过 plan_sync）：该节点只有 instrumentation 归因时，仍建节点（id 来自归因），`plan.estimate_*` 取 0/null、`deviation` null、`status:""`、`source_url:null`。看板优雅降级。
 - **dims**：`agent` 按 `event.tool`，`skill` 按 `event.skill`（含非内置如 `superpowers:tdd`），`tool` 按 `turn_complete.attrs.mcp_tools[]`/`tool_hook` 记录的 mcp 工具名；某 turn 无 tool → 计入键 `"无"`。三者**并列、不嵌套**。
 - **developers**：按 `events.actor_id` 分组，名字 `resolveName`。
+- **status_drift**：按 §6.1 规则计算（`buildStats`，需要 plan 树 + 归因 + verification）。
+
+## 6.1 状态漂移检测（看板侧，`computeStatusDrift(node)`，可测）
+
+目的：状态真源仍在 `plan.md`，但当模型漏更状态时，把"静默漏更"变成"机械可见"。**只检测、不自动改 plan.md**。每个节点算 `status_drift`，命中第一条即返回：
+
+- **R1 进行中漏标**：节点（或其后代）有实测归因（`turns>0`）但 `status ∈ {未开始, ""}` → `drift=true, reason="有实测活动但状态仍未开始"`。
+- **R2 收口漏标（rollup miss）**：节点有子级且**所有**直接子级 `status=已完成`，但本级 `status ≠ 已完成` → `reason="子项均已完成但本级未收口"`。
+- **R3 过度收口**：本级 `status ∈ {已完成, 已验证}` 但存在后代 `status ∉ {已完成, 已验证, 搁置}` → `reason="本级已收口但有子项未完成"`。
+- 否则 `drift=false, reason=""`。
+
+> R2/R3 是**纯 plan 内部一致性**（不需遥测），同时**下沉到 `fpg-check` plan-lint 作机械闸门**（见 §6.2）——这才是稳定可靠的那层：在 `sprint-develop` gate / `sprint-plan` 收尾时机自动跑，不依赖模型记得。R1 需要遥测归因，只在 `/stats` 侧算。
+
+## 6.2 状态一致性闸门（`fpg-check`，纯 plan、机械强制）
+
+`project-template/bin/fpg-check.sh` 新增 plan-lint 子检查 `status_consistency`（仅用 plan.md，不碰遥测）：
+- 读本级下级清单的状态列；对 Epic plan 还读顶层 `docs/iteration/plan.md` 的本 Epic 行。
+- **WARN**（不阻断、退出码仍 0，符合现有 WARN 语义）：
+  - 子级出现 `执行中/已实现/已验证/已完成` 但父级仍 `未开始` → `状态过期：父级应至少为执行中`；
+  - 直接子级全 `已完成` 但父级非 `已完成` → `应收口父级状态`。
+- 运行时机：沿用现有「`sprint-plan` 收尾跑 plan-lint」「`sprint-develop` 起步跑 gate」——无需新增记忆点。
 
 ## 7. 源链接（在 TS 里算，可测）
 
@@ -211,7 +233,7 @@ interface ProjectStat extends Omit<NodeStat,"level"> { level: "P"; epics: NodeSt
 
 `dashboard.ts` 输出单个 HTML（内联 `<style>`+`<script>`，零构建链、零外部依赖），启动后 `fetch('/stats?...')` 渲染：
 - **总览**：KPI 行（按 `role_view` 选组合）+ 并行甘特（时/天/周、分泳道、四态+图例+关键路径行）+ Agent/Skill/Tool 三维度块。
-- **下钻**：项目→E→S→T 树表，每行 `计划 | 实际 | 偏差`（token；工时仅实测，`deviation.hours=null` 显「—」）+ 中文状态 + `原文↗`(`source_url`)；叶子可展开。
+- **下钻**：项目→E→S→T 树表，每行 `计划 | 实际 | 偏差`（token；工时仅实测，`deviation.hours=null` 显「—」）+ 中文状态 + `原文↗`(`source_url`)；叶子可展开。`status_drift.drift=true` 的行在状态旁显「⚠ 状态疑似过期」徽标，hover 显 `reason`。
 - **开发者维度**：选 `actor` 看其贡献（`developers` + 树过滤）。
 - **视角**：boss/dev/product/qa 仅切 KPI 预设与默认筛选（前端 + `role_view`）。
 - **关注**：多选项目存 `/api/prefs`，过滤/高亮甘特。
@@ -256,3 +278,5 @@ interface ProjectStat extends Omit<NodeStat,"level"> { level: "P"; epics: NodeSt
   7. `user_prefs`：upsert 往返；无行派生默认。
   8. `buildSourceUrl`：repo permalink / vscode 兜底 / null。
   9. `plan-sync.sh --dry-run`：对 `test/fixtures/` 一个样例 epic 目录输出预期快照 JSON（Bun.spawn 跑 shell，断言 JSON）。
+  10. `computeStatusDrift`（§6.1）：R1 有归因但未开始 / R2 子全已完成父未收口 / R3 父已收口子未完成 / 无漂移返 false。
+  11. `fpg-check status_consistency`（§6.2）：构造父子状态矛盾的 plan.md，断言输出 WARN 且退出码 0（不阻断）。

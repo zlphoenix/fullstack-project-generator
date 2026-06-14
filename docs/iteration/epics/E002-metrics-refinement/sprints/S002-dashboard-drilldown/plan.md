@@ -7,52 +7,58 @@
 
 | 项 | 内容 |
 |---|---|
-| Definition-of-Done | 浏览器开 `GET /report`，对本仓库（已有 E001/E002 plan_sync + 真实 turn_complete 归因）能：项目→E→S→T 下钻看到 token 计划/实际/偏差三列、原文链接可点；并行甘特 时/天/周 切换 + 重叠 Epic 分泳道 + 四态图例 + 关键路径行；关注配置存 `/api/prefs` 重开保留。 |
-| DoD 验收证据 | `/report` 下钻截图 + 甘特三粒度截图 + `GET /stats` JSON + `/api/prefs` 往返，留 `evidence/`。 |
+| Definition-of-Done | 浏览器开 `GET /report`，对本仓库（已有 E001/E002 plan_sync + 真实 turn_complete 归因）能：项目→E→S→T 下钻看到 token 计划/实际/偏差三列、原文链接可点、**状态疑似过期行带 ⚠ 徽标**；并行甘特 时/天/周 切换 + 重叠 Epic 分泳道 + 四态图例 + 关键路径行；关注配置存 `/api/prefs` 重开保留；**`fpg-check plan-lint` 能机械检出父子状态矛盾（WARN，不阻断）**。 |
+| DoD 验收证据 | `/report` 下钻截图（含 ⚠ 漂移徽标）+ 甘特三粒度截图 + `GET /stats` JSON + `/api/prefs` 往返 + 对一份父子状态矛盾的 plan 跑 `fpg-check` 的 WARN 输出，留 `evidence/`。 |
 | Sprint 预算上限 | 1（硬上限 = 计划 × 1.2 ≈ 1） |
-| Token 预算上限 | 70k–150k；硬上限 = 180k（实际看遥测看板） |
+| Token 预算上限 | 90k–175k；硬上限 = 210k（实际看遥测看板） |
 | 退出场景 | 下钻偏差表；并行甘特+关键路径；关注/视角持久化 |
 | 明确不做 | 引入前端框架/构建链；远端多租户鉴权；阶段时长视图 |
 | 外部依赖与责任人 | S001 的 `/stats` 数据基础（plan_sync + actors/prefs）——Allen |
 
 ## 结构决策
 
-S002 = 看板单一退出场景组。Task 数 3，不分子目录。
+S002 = 看板单一退出场景组。Task 数 4（含状态漂移/一致性验收点），不分子目录。
 
 ## Task 清单与指标
 
 | ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 估计Token | 证据 |
 |---|---|---|---|---|---|---|---|
-| T001 | /stats 聚合契约：树+维度+甘特+偏差+关键路径+源链接 | Must Deliver | — | 否 | 未开始 | 30k–55k | [design §6,7,9,10](../../design.md) |
-| T002 | 看板单页（原生 JS）：总览/下钻/开发者/视角 | Must Deliver | T001 | 是(与 T003) | 未开始 | 30k–60k | [design §11](../../design.md) |
+| T001 | /stats 聚合契约：树+维度+甘特+偏差+关键路径+源链接+状态漂移 | Must Deliver | — | 否 | 未开始 | 35k–60k | [design §6,6.1,7,9,10](../../design.md) |
+| T002 | 看板单页（原生 JS）：总览/下钻/开发者/视角 + 漂移徽标 | Must Deliver | T001 | 是(与 T003) | 未开始 | 30k–60k | [design §11](../../design.md) |
 | T003 | 关注/视角 prefs：/api/prefs 路由 + 看板控件接线 | Must Verify | T001 | 是(与 T002) | 未开始 | 15k–35k | [design §5,11,13](../../design.md) |
+| T004 | 状态一致性闸门：fpg-check 父子状态矛盾检测（纯 plan、机械） | Must Verify | — | 是(与 T001/T002/T003) | 未开始 | 10k–20k | [design §6.2](../../design.md) |
 
 ### Task 细则（照做）
 
-- **T001** 改 `telemetry/src/metrics.ts`：新增 `buildStats(events, {actors, prefs, project, viewer})` 产出 design §6 的 `Stats`；新增 `githubSlug`(§7)、`buildSourceUrl`(§7)、`criticalPath`(§10)、`status4`映射(§8)、`active_hours_by_task` 归集(§6)；保留旧 `computeMetrics`。改 `telemetry/src/server.ts`：`/stats` 调 `buildStats` 并带 `viewer`（actors+prefs join）。测试：design §15 用例 3、4、5、8。
-- **T002** 重写 `telemetry/src/dashboard.ts`：输出单页 HTML（内联 style+script，零依赖），`fetch('/stats')` 后渲染 总览（KPI/并行甘特 时-天-周/三维度）、下钻（项目→E→S→T 偏差表+原文）、开发者维度、视角切换。交互可移植本 Epic 已审批原型。测试：`renderDashboard` 对一个 `Stats` fixture 输出含必需锚点（如 `id="gantt"`、`id="v-drill"`、三维度块、关键路径图例）。
+- **T001** 改 `telemetry/src/metrics.ts`：新增 `buildStats(events, {actors, prefs, project, viewer})` 产出 design §6 的 `Stats`；新增 `githubSlug`(§7)、`buildSourceUrl`(§7)、`criticalPath`(§10)、`status4`映射(§8)、`active_hours_by_task` 归集(§6)、`computeStatusDrift`(§6.1)；保留旧 `computeMetrics`。改 `telemetry/src/server.ts`：`/stats` 调 `buildStats` 并带 `viewer`（actors+prefs join）。测试：design §15 用例 3、4、5、8、10。
+- **T002** 重写 `telemetry/src/dashboard.ts`：输出单页 HTML（内联 style+script，零依赖），`fetch('/stats')` 后渲染 总览（KPI/并行甘特 时-天-周/三维度）、下钻（项目→E→S→T 偏差表+原文+`status_drift` 行带 ⚠ 徽标 hover reason）、开发者维度、视角切换。交互可移植本 Epic 已审批原型。测试：`renderDashboard` 对一个 `Stats` fixture（含一条 `status_drift.drift=true`）输出含必需锚点（`id="gantt"`、`id="v-drill"`、三维度块、关键路径图例、漂移徽标）。
 - **T003** 改 `telemetry/src/server.ts`：`/api/prefs` GET/PUT(§13)。看板加关注弹窗（多选项目 → PUT prefs）、视角下拉（role_view → KPI 预设与默认筛选，前端）。测试：prefs 路由往返 + 派生默认（并入 S001 用例 7 或新增 server 用例）。
+- **T004** 改 `project-template/bin/fpg-check.sh`：plan-lint 增 `status_consistency` 子检查(§6.2，纯 plan、WARN 不阻断、退出码仍 0)——子级 `执行中/已实现/已验证/已完成` 但父级 `未开始` → WARN；直接子级全 `已完成` 但父级非 `已完成` → WARN；Epic plan 额外比对顶层 `docs/iteration/plan.md` 本 Epic 行。测试：design §15 用例 11（构造矛盾 plan，断言 WARN + exit 0）。**与 T001/T002/T003 完全不同文件，可并行。**
 
 ## Mermaid 前序依赖图（Task 关系）
 
 ```mermaid
 graph LR
-  T001[T001 /stats 契约] --> T002[T002 看板单页]
+  T001[T001 /stats 契约+漂移] --> T002[T002 看板单页+徽标]
   T001 --> T003[T003 关注/视角 prefs]
+  T004[T004 fpg-check 一致性闸门]
 ```
 
 ## 并行边界
 
 - T001 先行（定 `/stats` 契约，是看板与 prefs UI 的数据基础）。
 - T002 与 T003 可并行：T002 主要写 `dashboard.ts` 渲染；T003 主要写 `server.ts` 路由 + 看板里关注/视角控件。约定 `dashboard.ts` 里 T003 只追加关注/视角片段，合并点由协调线程串行收口。
+- T004 与其余三者**完全并行**：只改 `project-template/bin/fpg-check.sh`，不碰 telemetry。
 - 串行冲突文件：`metrics.ts`/`server.ts`（T001 先，T003 后）、`dashboard.ts`（T002 主、T003 增量）。
 
 ## 验收标准
 
-- `GET /stats` 输出符合 design §6 形状：三层树、`deviation`（token 有值/工时 null）、`dims` 三维独立含「无」、`gantt.status4/critical/deps`、`source_url`。
+- `GET /stats` 输出符合 design §6 形状：三层树、`deviation`（token 有值/工时 null）、`dims` 三维独立含「无」、`gantt.status4/critical/deps`、`source_url`、`status_drift`。
+- `computeStatusDrift` R1/R2/R3 规则正确（§6.1，单测覆盖）；看板下钻对漂移行显 ⚠ 徽标 + hover `reason`。
+- `fpg-check plan-lint` 对父子状态矛盾的 plan 输出 `status_consistency` WARN 且退出码 0（不阻断）；正常 plan 无该 WARN。
 - 看板单页零外部依赖、零构建步骤；总览/下钻/开发者/视角/关注全部可用；甘特三粒度 + 分泳道 + 四态图例 + 关键路径行（无依赖时提示「未声明依赖」）。
 - 关注配置 PUT 后重开浏览器仍生效（落 `user_prefs`）。
-- design §15 用例 3、4、5、8 全绿；`cd telemetry && bun test` 通过；本文件 `plan-lint` 无 STOP。
+- design §15 用例 3、4、5、8、10、11 全绿；`cd telemetry && bun test` 通过；本文件 `plan-lint` 无 STOP。
 
 ## 风险与 Backlog
 
