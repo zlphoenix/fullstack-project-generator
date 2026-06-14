@@ -694,6 +694,39 @@ describe("plan-sync.sh", () => {
   });
 });
 
+describe("collector.sh", () => {
+  test("config 从 .env 风格文件读取默认启动配置且不打印 token", async () => {
+    const dir = await Bun.$`mktemp -d`.text();
+    const envPath = join(dir.trim(), ".env");
+    await Bun.write(envPath, [
+      "FPG_TELEMETRY_PORT=19090",
+      "FPG_TELEMETRY_DB=./data/custom.db",
+      "FPG_TELEMETRY_TOKEN=secret-value",
+      "",
+    ].join("\n"));
+
+    const proc = Bun.spawn({
+      cmd: ["bash", join(TELEMETRY_DIR, "bin/collector.sh"), "config"],
+      cwd: TELEMETRY_DIR,
+      env: { ...process.env, FPG_TELEMETRY_ENV: envPath },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("FPG_TELEMETRY_PORT=19090");
+    expect(stdout).toContain("FPG_TELEMETRY_DB=./data/custom.db");
+    expect(stdout).toContain("FPG_TELEMETRY_TOKEN=(set)");
+    expect(stdout).not.toContain("secret-value");
+  });
+});
+
 describe("fpg-check status_consistency", () => {
   test("父子状态矛盾输出 WARN 且不阻断", async () => {
     const dir = await Bun.$`mktemp -d`.text();

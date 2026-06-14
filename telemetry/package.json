@@ -6,6 +6,12 @@
   "type": "module",
   "scripts": {
     "collector": "bun run src/server.ts",
+    "collector:start": "bash bin/collector.sh start",
+    "collector:stop": "bash bin/collector.sh stop",
+    "collector:restart": "bash bin/collector.sh restart",
+    "collector:status": "bash bin/collector.sh status",
+    "collector:config": "bash bin/collector.sh config",
+    "restart": "bash bin/collector.sh restart",
     "report": "bun run src/report.ts",
     "test": "bun test"
   },

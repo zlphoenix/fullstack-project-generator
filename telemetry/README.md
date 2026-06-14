@@ -71,10 +71,18 @@ kill <PID>
 
 ```bash
 cd telemetry
-FPG_TELEMETRY_PORT=10000 \
-FPG_TELEMETRY_DB=./data/events.db \
-FPG_TELEMETRY_TOKEN=optional-secret \
-bun run collector
+cp .env.example .env
+# 编辑 .env：FPG_TELEMETRY_PORT / FPG_TELEMETRY_DB / FPG_TELEMETRY_TOKEN
+bun run collector:restart
+```
+
+也可以使用短命令：
+
+```bash
+cd telemetry
+bun run restart          # 等同 collector:restart
+bun run collector:status
+bun run collector:config # 打印当前默认配置，token 只显示是否已设置
 ```
 
 如需让新版看板出现计划侧 E/S/T 树，先在仓库根同步 plan：

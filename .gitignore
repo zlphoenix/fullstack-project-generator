@@ -6,3 +6,4 @@ __pycache__/
 
 # Telemetry runtime state (collector DB/pid/log)
 telemetry/data/
+telemetry/.env
