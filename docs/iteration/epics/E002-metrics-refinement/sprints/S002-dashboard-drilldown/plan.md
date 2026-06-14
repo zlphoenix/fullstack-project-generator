@@ -59,6 +59,20 @@ graph LR
 - 看板单页零外部依赖、零构建步骤；总览/下钻/开发者/视角/关注全部可用；甘特三粒度 + 分泳道 + 四态图例 + 关键路径行（无依赖时提示「未声明依赖」）。
 - 关注配置 PUT 后重开浏览器仍生效（落 `user_prefs`）。
 - design §15 用例 3、4、5、8、10、11 全绿；`cd telemetry && bun test` 通过；本文件 `plan-lint` 无 STOP。
+- 「代码清理」C1/C2/C3 全部完成、R1/R2/R3 已扫清（或明确转 Backlog 并写原因）；含 C1 父级 session 去重新增单测。
+
+## 代码清理（S002 收尾前必清，不留到下个 Epic）
+
+> 来自 S001/S002.T001 代码审查。**C 类（正确性/清晰度）本 Sprint 必修**；**R 类（重构）本 Sprint 末扫清**。修完补/跑相应单测,`bun test` 全绿。
+
+| 项 | 类型 | 位置 | 问题 | 处理 |
+|---|---|---|---|---|
+| C1 | 必修 | `metrics.ts` buildStats(~515/600) | 父级 `sessions` 用合成 id 累加子级 → 跨任务同一 session 重复计数 | `ActualBucket.sessions` 全程用真实 `Set<string>` 上卷,`actualOut` 末端取 `size`;补"父级 session 去重"单测 |
+| C2 | 必修 | `metrics.ts` buildStats(~547) | dead code `findEpicForSprint`(及未用的 `sprintToEpic`) | 删除 |
+| C3 | 必修 | `store.ts` `backfillActorsIfEmpty` | 每次 `insert()` 后跑一次 `COUNT`(首条后即恒为非空) | 用内存标志位,置真后不再查 |
+| R1 | 重构 | `metrics.ts` | makeNode 子级聚合(515-521)与 project 级聚合(596-603)重复、`addActual` 未统一 | 抽 `aggregateChildren()` 一处复用(与 C1 一并做) |
+| R2 | 重构 | `plan-sync.sh` | Epic-Sprint 表循环与 Sprint-Task 表循环结构重复 | 抽"按下级清单表解析节点"函数;改后跑 fixtures 回归 |
+| R3 | 增强 | `metrics.ts`(~579) | 计划缺失分支只在整 Epic 缺失时建节点;Epic 存在但出现未知 sprint/task 归因则不显示 | 已知 Epic 下追加未知子节点,或至少不丢归因 |
 
 ## 风险与 Backlog
 
@@ -66,3 +80,4 @@ graph LR
 |---|---|---|---|---|---|---|---|---|
 | 关键路径精确算法 vs 仅标 Must Deliver | 未开始 | P1 | Medium | 20k–40k | §10 | 关键路径不准 | 与人工标注一致 | §10 已给最长路径算法，足够本 Sprint |
 | 看板交互组件化/抽公共渲染 | 搁置 | P3 | Low | 10k–20k | — | 后续维护稍累 | — | 原生单页够用，先交付 |
+| 路由分发抽小 router（server.ts） | 搁置 | P3 | Low | 5k–10k | — | if 链随 /api 增多变长 | — | 当前路由少，过度设计 |
