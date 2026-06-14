@@ -51,7 +51,56 @@ export FPG_TOOL="claude"         # claude|codex（install.sh 按工具分别写�
 
 ### 3) 看结果
 
-**度量看板**（浏览器）：`http://localhost:10000/report[?project=my-app]` —— token 按阶段/Skill/E-S-T、活跃耗时、skill 命中、返工率等。
+**新版统计看板**（浏览器）：`http://localhost:10000/report[?project=my-app][&actor=<actor_id>]`
+
+看板读取 `GET /stats`，展示项目 → Epic → Sprint → Task 下钻、计划/实际/偏差、状态疑似过期徽标、并行甘特（时/天/周）、Agent/Skill/Tool 三维度、开发者维度，以及按 `actor_id` 持久化的关注项目/视角。
+
+### 4) 重启 collector 并打开新版看板
+
+如果已有旧 collector 在运行，先停止它：
+
+```bash
+# 前台运行时：在 collector 终端按 Ctrl+C
+
+# 后台运行时：查端口并停止对应 PID
+lsof -nP -iTCP:10000 -sTCP:LISTEN
+kill <PID>
+```
+
+重新启动：
+
+```bash
+cd telemetry
+FPG_TELEMETRY_PORT=10000 \
+FPG_TELEMETRY_DB=./data/events.db \
+FPG_TELEMETRY_TOKEN=optional-secret \
+bun run collector
+```
+
+如需让新版看板出现计划侧 E/S/T 树，先在仓库根同步 plan：
+
+```bash
+cd /path/to/fullstack-project-generator
+bash telemetry/plan-sync.sh \
+  --epic-dir docs/iteration/epics/E002-metrics-refinement \
+  --project fullstack-project-generator \
+  --endpoint http://localhost:10000
+```
+
+打开看板：
+
+```bash
+open "http://localhost:10000/report?actor=${USER}"
+# 或限定项目
+open "http://localhost:10000/report?project=fullstack-project-generator&actor=${USER}"
+```
+
+排查时可直接看 JSON：
+
+```bash
+curl "http://localhost:10000/stats?actor=${USER}"
+curl "http://localhost:10000/api/prefs?actor=${USER}"
+```
 
 命令行报表：
 
@@ -69,8 +118,12 @@ bun run report --db ./data/events.db --project my-app --format json
 ## API
 
 - `GET /health` → `{status, events}`
-- `GET /report?project=<id>` → 度量看板（HTML）
-- `GET /stats?project=<id>` → 聚合指标 JSON
+- `GET /report?project=<id>&actor=<id>` → 新版统计看板（HTML）
+- `GET /stats?project=<id>&actor=<id>` → 看板数据源 JSON（计划/实际 join、甘特、漂移、维度、开发者）
+- `GET /api/actors` → actor 列表
+- `PUT /api/actors/:id` → 更新显示名/角色（若设置 token 需 Bearer）
+- `GET /api/prefs?actor=<id>` → 关注项目/视角偏好
+- `PUT /api/prefs?actor=<id>` → 保存关注项目/视角（若设置 token 需 Bearer）
 - `POST /events`（单条或数组）→ `{accepted, rejected}`；若设置了 `FPG_TELEMETRY_TOKEN` 需带 `Authorization: Bearer <token>`
 
 ## 隐私
