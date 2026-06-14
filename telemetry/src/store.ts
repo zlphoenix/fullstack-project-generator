@@ -16,6 +16,7 @@ export interface UserPrefs {
 
 export class EventStore {
   private db: Database;
+  private actorsBackfilled = false;
 
   /** path 为 ":memory:" 时使用内存库（测试用）。 */
   constructor(path: string) {
@@ -73,8 +74,12 @@ export class EventStore {
   }
 
   private backfillActorsIfEmpty(): void {
+    if (this.actorsBackfilled) return;
     const count = this.db.query("SELECT COUNT(*) AS n FROM actors").get() as { n: number };
-    if (count.n > 0) return;
+    if (count.n > 0) {
+      this.actorsBackfilled = true;
+      return;
+    }
     const now = new Date().toISOString();
     const rows = this.db.query("SELECT DISTINCT actor_id FROM events").all() as { actor_id: string }[];
     const insert = this.db.query(
@@ -84,6 +89,7 @@ export class EventStore {
     for (const row of rows) {
       insert.run({ $actor_id: row.actor_id, $created_at: now, $updated_at: now });
     }
+    if (rows.length > 0) this.actorsBackfilled = true;
   }
 
   /** 幂等插入（event_id 重复则忽略，支持离线补传重发）。返回是否为新事件。 */

@@ -250,6 +250,44 @@ node_json() {
     "$(json_escape "$status")" "$deps" "$tokens" "$hours" "$source"
 }
 
+append_child_nodes_from_table() {
+  local file="$1" parent="$2" level="$3" heading="$4" header="$5" rows="$6" source_mode="${7:-row}"
+  local idx_id idx_name idx_cat idx_deps idx_status idx_tokens idx_hours has_hours line row id source_file source_heading source_line src d_field m_deps node sp_file sp_h sp_l
+  idx_id="$(header_index "$header" "ID")"
+  idx_name="$(header_index "$header" "名称")"
+  idx_cat="$(header_index "$header" "分类")"
+  idx_deps="$(header_index "$header" "前置")"
+  idx_status="$(header_index "$header" "状态")"
+  idx_tokens="$(header_index "$header" "估计Token")"
+  idx_hours="$(header_index "$header" "估计工时")"
+  has_hours=0; [ -n "$idx_hours" ] && has_hours=1
+  while IFS="$(printf '\t')" read -r line row; do
+    [ -z "$row" ] && continue
+    id="$(cell_value "$row" "$idx_id")"
+    [ -z "$id" ] && continue
+    source_file="$file"
+    source_heading="$heading"
+    source_line="$line"
+    if [ "$source_mode" = "sprint-plan" ]; then
+      sp_file="$(sprint_plan_file "$id")"
+      if [ -n "$sp_file" ] && [ -f "$sp_file" ]; then
+        sp_h="$(first_h1_heading "$sp_file")"
+        sp_l="$(first_h1_line "$sp_file")"
+        source_file="$sp_file"
+        source_heading="$sp_h"
+        source_line="${sp_l:-1}"
+      fi
+    fi
+    d_field="$(cell_value "$row" "$idx_deps")"
+    m_deps="$(mermaid_deps_for "$file" "$id" | tr '\n' ' ')"
+    src="$(source_json "$source_file" "$source_heading" "$source_line")"
+    node="$(node_json "$level" "$id" "$parent" "$(cell_value "$row" "$idx_name")" "$(normalize_category "$(cell_value "$row" "$idx_cat")")" "$(normalize_status "$(cell_value "$row" "$idx_status")")" "$(deps_json "$d_field" "$m_deps")" "$(estimate_tokens_json "$(cell_value "$row" "$idx_tokens")")" "$(estimate_hours_json "$(cell_value "$row" "$idx_hours")" "$has_hours")" "$src")"
+    NODES="$NODES,$node"
+  done <<EOF
+$rows
+EOF
+}
+
 sprint_plan_file() {
   find "$EPIC_DIR/sprints" -maxdepth 1 -type d -name "$1-*" 2>/dev/null | sort | head -1 | sed 's#$#/plan.md#'
 }
@@ -286,61 +324,13 @@ if [ -n "$EPIC_DIR" ] && [ -d "$EPIC_DIR" ] && [ -f "$EPIC_DIR/plan.md" ]; then
     E_NODE="$(node_json "E" "$ROOT" "" "$H1" "" "$(epic_status "$ROOT")" "[]" "$(estimate_tokens_json "$(grep 'Token 预算上限' "$EPIC_PLAN" | head -1)")" "null" "$(source_json "$EPIC_PLAN" "$H1" "${H1_LINE:-1}")")"
     NODES="$E_NODE"
 
-    EPIC_HEADER="$(table_header_after_heading "$EPIC_PLAN" "Sprint 清单与指标")"
-    IDX_ID="$(header_index "$EPIC_HEADER" "ID")"
-    IDX_NAME="$(header_index "$EPIC_HEADER" "名称")"
-    IDX_CAT="$(header_index "$EPIC_HEADER" "分类")"
-    IDX_DEPS="$(header_index "$EPIC_HEADER" "前置")"
-    IDX_STATUS="$(header_index "$EPIC_HEADER" "状态")"
-    IDX_TOKENS="$(header_index "$EPIC_HEADER" "估计Token")"
-    IDX_HOURS="$(header_index "$EPIC_HEADER" "估计工时")"
-    HAS_HOURS=0; [ -n "$IDX_HOURS" ] && HAS_HOURS=1
-    while IFS="$(printf '\t')" read -r line row; do
-      [ -z "$row" ] && continue
-      ID="$(cell_value "$row" "$IDX_ID")"
-      [ -z "$ID" ] && continue
-      SP_FILE="$(sprint_plan_file "$ID")"
-      if [ -n "$SP_FILE" ] && [ -f "$SP_FILE" ]; then
-        SP_H="$(first_h1_heading "$SP_FILE")"
-        SP_L="$(first_h1_line "$SP_FILE")"
-        SRC="$(source_json "$SP_FILE" "$SP_H" "${SP_L:-1}")"
-      else
-        SRC="$(source_json "$EPIC_PLAN" "Sprint 清单与指标" "$line")"
-      fi
-      D_FIELD="$(cell_value "$row" "$IDX_DEPS")"
-      M_DEPS="$(mermaid_deps_for "$EPIC_PLAN" "$ID" | tr '\n' ' ')"
-      NODE="$(node_json "S" "$ID" "$ROOT" "$(cell_value "$row" "$IDX_NAME")" "$(normalize_category "$(cell_value "$row" "$IDX_CAT")")" "$(normalize_status "$(cell_value "$row" "$IDX_STATUS")")" "$(deps_json "$D_FIELD" "$M_DEPS")" "$(estimate_tokens_json "$(cell_value "$row" "$IDX_TOKENS")")" "$(estimate_hours_json "$(cell_value "$row" "$IDX_HOURS")" "$HAS_HOURS")" "$SRC")"
-      NODES="$NODES,$NODE"
-    done <<EOF
-$(table_rows_after_heading "$EPIC_PLAN" "Sprint 清单与指标")
-EOF
+    append_child_nodes_from_table "$EPIC_PLAN" "$ROOT" "S" "Sprint 清单与指标" "$(table_header_after_heading "$EPIC_PLAN" "Sprint 清单与指标")" "$(table_rows_after_heading "$EPIC_PLAN" "Sprint 清单与指标")" "sprint-plan"
 
     for SP_FILE in "$EPIC_DIR"/sprints/S*/plan.md; do
       [ -f "$SP_FILE" ] || continue
       SPRINT_ID="$(basename "$(dirname "$SP_FILE")" | grep -Eo '^S[0-9]+' || true)"
       [ -z "$SPRINT_ID" ] && continue
-      HEADER="$(task_table_header "$SP_FILE")"
-      HEADING="$(task_table_heading "$SP_FILE")"
-      IDX_ID="$(header_index "$HEADER" "ID")"
-      IDX_NAME="$(header_index "$HEADER" "名称")"
-      IDX_CAT="$(header_index "$HEADER" "分类")"
-      IDX_DEPS="$(header_index "$HEADER" "前置")"
-      IDX_STATUS="$(header_index "$HEADER" "状态")"
-      IDX_TOKENS="$(header_index "$HEADER" "估计Token")"
-      IDX_HOURS="$(header_index "$HEADER" "估计工时")"
-      HAS_HOURS=0; [ -n "$IDX_HOURS" ] && HAS_HOURS=1
-      while IFS="$(printf '\t')" read -r line row; do
-        [ -z "$row" ] && continue
-        ID="$(cell_value "$row" "$IDX_ID")"
-        [ -z "$ID" ] && continue
-        D_FIELD="$(cell_value "$row" "$IDX_DEPS")"
-        M_DEPS="$(mermaid_deps_for "$SP_FILE" "$ID" | tr '\n' ' ')"
-        SRC="$(source_json "$SP_FILE" "$HEADING" "$line")"
-        NODE="$(node_json "T" "$ID" "$SPRINT_ID" "$(cell_value "$row" "$IDX_NAME")" "$(normalize_category "$(cell_value "$row" "$IDX_CAT")")" "$(normalize_status "$(cell_value "$row" "$IDX_STATUS")")" "$(deps_json "$D_FIELD" "$M_DEPS")" "$(estimate_tokens_json "$(cell_value "$row" "$IDX_TOKENS")")" "$(estimate_hours_json "$(cell_value "$row" "$IDX_HOURS")" "$HAS_HOURS")" "$SRC")"
-        NODES="$NODES,$NODE"
-      done <<EOF
-$(task_table_rows "$SP_FILE")
-EOF
+      append_child_nodes_from_table "$SP_FILE" "$SPRINT_ID" "T" "$(task_table_heading "$SP_FILE")" "$(task_table_header "$SP_FILE")" "$(task_table_rows "$SP_FILE")"
     done
     SNAPSHOT="{\"root\":\"$(json_escape "$ROOT")\",\"generated_at\":\"$(json_escape "$GENERATED_AT")\",\"nodes\":[$NODES]}"
   fi

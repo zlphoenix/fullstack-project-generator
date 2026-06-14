@@ -388,6 +388,15 @@ interface ActualBucket {
   end: string | null;
 }
 
+interface BuiltNode {
+  projectId: string;
+  planNode: PlanNode | null;
+  key: string;
+  children: BuiltNode[];
+  stat: NodeStat;
+  bucket: ActualBucket;
+}
+
 function emptyActual(): ActualBucket {
   return { tokens: 0, active_hours: 0, sessions: new Set(), turns: 0, start: null, end: null };
 }
@@ -399,6 +408,13 @@ function addActual(target: ActualBucket, source: ActualBucket) {
   for (const session of source.sessions) target.sessions.add(session);
   if (source.start && (!target.start || source.start < target.start)) target.start = source.start;
   if (source.end && (!target.end || source.end > target.end)) target.end = source.end;
+}
+
+function aggregateChildren(direct: ActualBucket, children: BuiltNode[]): ActualBucket {
+  const aggregate = emptyActual();
+  addActual(aggregate, direct);
+  for (const child of children) addActual(aggregate, child.bucket);
+  return aggregate;
 }
 
 function actualOut(bucket: ActualBucket): NodeStat["actual"] {
@@ -498,27 +514,18 @@ export function buildStats(events: TelemetryEvent[], options: BuildStatsOptions 
   }
 
   const actualFor = (project: string, key: string) => actualByProjectTask.get(`${project}\u0000${key}`) ?? emptyActual();
-  const projects = new Map<string, ProjectStat>();
+  const projects = new Map<string, { stat: ProjectStat; epics: BuiltNode[] }>();
 
   function makeNode(
     projectId: string,
     planNode: PlanNode | null,
     level: "E" | "S" | "T",
     id: string,
-    children: NodeStat[],
+    children: BuiltNode[],
     key: string,
-  ): NodeStat {
+  ): BuiltNode {
     const direct = actualFor(projectId, key);
-    const aggregate = emptyActual();
-    addActual(aggregate, direct);
-    for (const child of children) {
-      aggregate.tokens += child.actual.tokens;
-      aggregate.active_hours += child.actual.active_hours;
-      aggregate.turns += child.actual.turns;
-      for (let i = 0; i < child.actual.sessions; i++) aggregate.sessions.add(`${child.id}:${i}`);
-      if (child.gantt.start && (!aggregate.start || child.gantt.start < aggregate.start)) aggregate.start = child.gantt.start;
-      if (child.gantt.end && (!aggregate.end || child.gantt.end > aggregate.end)) aggregate.end = child.gantt.end;
-    }
+    const aggregate = aggregateChildren(direct, children);
     const plan = {
       estimate_tokens: planNode?.estimate_tokens ?? ([0, 0] as [number, number]),
       estimate_hours: planNode?.estimate_hours ?? null,
@@ -538,20 +545,30 @@ export function buildStats(events: TelemetryEvent[], options: BuildStatsOptions 
       source_url: planNode ? buildSourceUrl(planNode.source) : null,
       status_drift: { drift: false, reason: "" },
       gantt: { start, end, status4: status4(status), blocked: status === "阻塞", critical: false, deps: planNode?.deps ?? [] },
-      children,
+      children: children.map((child) => child.stat),
     };
     node.status_drift = computeStatusDrift(node);
-    return node;
+    return { projectId, planNode, key, children, stat: node, bucket: aggregate };
   }
 
-  const sprintToEpic = new Map<string, string>();
-  function findEpicForSprint(sprint: string): string {
-    return sprintToEpic.get(sprint) ?? "-";
+  function refreshNode(node: BuiltNode): void {
+    for (const child of node.children) refreshNode(child);
+    const aggregate = aggregateChildren(actualFor(node.projectId, node.key), node.children);
+    const actual = actualOut(aggregate);
+    const start = node.planNode?.planned_start ?? aggregate.start;
+    const end = node.planNode?.planned_end ?? aggregate.end;
+    node.bucket = aggregate;
+    node.stat.children = node.children.map((child) => child.stat);
+    node.stat.actual = actual;
+    node.stat.deviation = deviation(actual, node.stat.plan);
+    node.stat.gantt.start = start;
+    node.stat.gantt.end = end;
+    node.stat.status_drift = computeStatusDrift(node.stat);
   }
+
   for (const { project_id, plan } of latestPlans.values()) {
     const byParent = new Map<string, PlanNode[]>();
     for (const node of plan.nodes) {
-      if (node.level === "S" && node.parent) sprintToEpic.set(node.id, node.parent);
       const parent = node.parent ?? "";
       (byParent.get(parent) ?? byParent.set(parent, []).get(parent)!).push(node);
     }
@@ -562,50 +579,58 @@ export function buildStats(events: TelemetryEvent[], options: BuildStatsOptions 
         const taskStats = (byParent.get(sPlan.id) ?? [])
           .filter((node) => node.level === "T")
           .map((tPlan) => makeNode(project_id, tPlan, "T", tPlan.id, [], `${sPlan.parent}/${sPlan.id}/${tPlan.id}`));
-        const critical = criticalPath(taskStats);
-        for (const task of taskStats) task.gantt.critical = critical.has(task.id);
+        const critical = criticalPath(taskStats.map((task) => task.stat));
+        for (const task of taskStats) task.stat.gantt.critical = critical.has(task.stat.id);
         return makeNode(project_id, sPlan, "S", sPlan.id, taskStats, `${sPlan.parent}/${sPlan.id}/-`);
       });
-      const critical = criticalPath(sStats);
-      for (const sprint of sStats) sprint.gantt.critical = critical.has(sprint.id);
+      const critical = criticalPath(sStats.map((sprint) => sprint.stat));
+      for (const sprint of sStats) sprint.stat.gantt.critical = critical.has(sprint.stat.id);
       return makeNode(project_id, ePlan, "E", ePlan.id, sStats, `${ePlan.id}/-/-`);
     });
-    const project = projects.get(project_id) ?? projectNode(project_id);
+    const project = projects.get(project_id) ?? builtProjectNode(project_id);
     project.epics.push(...epics);
-    project.children = project.epics;
+    project.stat.epics = project.epics.map((epic) => epic.stat);
+    project.stat.children = project.stat.epics;
     projects.set(project_id, project);
   }
 
   for (const [compound, bucket] of actualByProjectTask.entries()) {
     const [projectId, key] = compound.split("\u0000");
     const [epicId, sprintId, taskId] = key.split("/");
-    const project = projects.get(projectId) ?? projectNode(projectId);
-    if (!project.epics.some((epic) => epic.id === epicId)) {
+    const project = projects.get(projectId) ?? builtProjectNode(projectId);
+    let epic = project.epics.find((item) => item.stat.id === epicId);
+    if (!epic) {
       const task = makeNode(projectId, null, "T", taskId, [], `${epicId}/${sprintId}/${taskId}`);
       const sprint = makeNode(projectId, null, "S", sprintId, [task], `${epicId}/${sprintId}/-`);
-      const epic = makeNode(projectId, null, "E", epicId, [sprint], `${epicId}/-/-`);
+      epic = makeNode(projectId, null, "E", epicId, [sprint], `${epicId}/-/-`);
       project.epics.push(epic);
-      project.children = project.epics;
       projects.set(projectId, project);
+    } else if (sprintId !== "-") {
+      let sprint = epic.children.find((item) => item.stat.id === sprintId);
+      if (!sprint) {
+        const children = taskId !== "-" ? [makeNode(projectId, null, "T", taskId, [], `${epicId}/${sprintId}/${taskId}`)] : [];
+        sprint = makeNode(projectId, null, "S", sprintId, children, `${epicId}/${sprintId}/-`);
+        epic.children.push(sprint);
+      } else if (taskId !== "-" && !sprint.children.some((item) => item.stat.id === taskId)) {
+        sprint.children.push(makeNode(projectId, null, "T", taskId, [], `${epicId}/${sprintId}/${taskId}`));
+      }
     }
+    project.stat.epics = project.epics.map((item) => item.stat);
+    project.stat.children = project.stat.epics;
+    projects.set(projectId, project);
   }
 
   for (const projectId of projectIds) {
-    const project = projects.get(projectId) ?? projectNode(projectId);
-    const aggregate = emptyActual();
-    for (const epic of project.epics) {
-      aggregate.tokens += epic.actual.tokens;
-      aggregate.active_hours += epic.actual.active_hours;
-      aggregate.turns += epic.actual.turns;
-      for (let i = 0; i < epic.actual.sessions; i++) aggregate.sessions.add(`${epic.id}:${i}`);
-      if (epic.gantt.start && (!aggregate.start || epic.gantt.start < aggregate.start)) aggregate.start = epic.gantt.start;
-      if (epic.gantt.end && (!aggregate.end || epic.gantt.end > aggregate.end)) aggregate.end = epic.gantt.end;
-    }
-    project.actual = actualOut(aggregate);
-    project.deviation = deviation(project.actual, project.plan);
-    project.gantt.start = aggregate.start;
-    project.gantt.end = aggregate.end;
-    project.status_drift = computeStatusDrift(project);
+    const project = projects.get(projectId) ?? builtProjectNode(projectId);
+    for (const epic of project.epics) refreshNode(epic);
+    const aggregate = aggregateChildren(emptyActual(), project.epics);
+    project.stat.epics = project.epics.map((epic) => epic.stat);
+    project.stat.children = project.stat.epics;
+    project.stat.actual = actualOut(aggregate);
+    project.stat.deviation = deviation(project.stat.actual, project.stat.plan);
+    project.stat.gantt.start = aggregate.start;
+    project.stat.gantt.end = aggregate.end;
+    project.stat.status_drift = computeStatusDrift(project.stat);
     projects.set(projectId, project);
   }
 
@@ -617,7 +642,7 @@ export function buildStats(events: TelemetryEvent[], options: BuildStatsOptions 
       role_view: prefs.role_view,
       watched_projects: prefs.watched_projects,
     },
-    projects: [...projects.values()].sort((a, b) => a.id.localeCompare(b.id)),
+    projects: [...projects.values()].map((project) => project.stat).sort((a, b) => a.id.localeCompare(b.id)),
     dims: { agent: kvList(dims.agent), skill: kvList(dims.skill), tool: kvList(dims.tool) },
     developers: [...developerBuckets.entries()]
       .map(([actor_id, bucket]) => ({
@@ -629,6 +654,10 @@ export function buildStats(events: TelemetryEvent[], options: BuildStatsOptions 
       }))
       .sort((a, b) => b.tokens - a.tokens || a.actor_id.localeCompare(b.actor_id)),
   };
+}
+
+function builtProjectNode(id: string): { stat: ProjectStat; epics: BuiltNode[] } {
+  return { stat: projectNode(id), epics: [] };
 }
 
 function projectNode(id: string): ProjectStat {

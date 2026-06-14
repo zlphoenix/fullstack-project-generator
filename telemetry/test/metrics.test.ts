@@ -472,7 +472,66 @@ describe("buildStats", () => {
     expect(unplannedEpic?.deviation).toEqual({ tokens: null, hours: null });
     expect(unplannedEpic?.source_url).toBeNull();
   });
+
+  test("父级 sessions 使用真实 session 去重，同一 session 多任务不重复计数", () => {
+    const plan = {
+      root: "E010",
+      generated_at: "2026-06-14T00:00:00.000Z",
+      nodes: [
+        node("E", "E010", null, "Epic", "执行中", []),
+        node("S", "S001", "E010", "Sprint", "执行中", []),
+        node("T", "T001", "S001", "Task 1", "执行中", []),
+        node("T", "T002", "S001", "Task 2", "执行中", []),
+      ],
+    };
+    const stats = buildStats([
+      ev({ schema_version: 2, event_type: "plan_sync", project_id: "p10", attrs: { plan } }),
+      ev({ event_type: "session_start", project_id: "p10", ts: "2026-06-14T01:00:00.000Z", attrs: { session_id: "same" } }),
+      ev({ event_type: "turn_complete", project_id: "p10", ts: "2026-06-14T01:05:00.000Z", attrs: { session_id: "same", epic: "E010", sprint: "S001", task: "T001", usage: { turn_total_tokens: 10 } } }),
+      ev({ event_type: "turn_complete", project_id: "p10", ts: "2026-06-14T01:10:00.000Z", attrs: { session_id: "same", epic: "E010", sprint: "S001", task: "T002", usage: { turn_total_tokens: 20 } } }),
+    ]);
+
+    const sprint = stats.projects[0].epics[0].children[0];
+    expect(sprint.actual.sessions).toBe(1);
+    expect(stats.projects[0].epics[0].actual.sessions).toBe(1);
+    expect(stats.projects[0].actual.sessions).toBe(1);
+  });
+
+  test("计划已有 Epic 时追加未知 sprint/task 归因，不丢 actual", () => {
+    const plan = {
+      root: "E020",
+      generated_at: "2026-06-14T00:00:00.000Z",
+      nodes: [node("E", "E020", null, "Epic", "执行中", [])],
+    };
+    const stats = buildStats([
+      ev({ schema_version: 2, event_type: "plan_sync", project_id: "p20", attrs: { plan } }),
+      ev({ event_type: "turn_complete", project_id: "p20", attrs: { session_id: "u1", epic: "E020", sprint: "S999", task: "T999", usage: { turn_total_tokens: 321 } } }),
+    ]);
+
+    const epic = stats.projects[0].epics[0];
+    const sprint = epic.children.find((item) => item.id === "S999");
+    expect(sprint?.children[0].id).toBe("T999");
+    expect(sprint?.children[0].actual.tokens).toBe(321);
+    expect(epic.actual.tokens).toBe(321);
+  });
 });
+
+function node(level: "E" | "S" | "T", id: string, parent: string | null, name: string, status: string, deps: string[]) {
+  return {
+    level,
+    id,
+    parent,
+    name,
+    category: "Must Deliver",
+    status,
+    deps,
+    estimate_tokens: [0, 0],
+    estimate_hours: null,
+    source: { repo_url: "", commit: "", path: "", heading: "", line: 0, abs_path: "" },
+    planned_start: null,
+    planned_end: null,
+  };
+}
 
 describe("EventStore", () => {
   test("插入幂等 + 查询过滤", () => {
