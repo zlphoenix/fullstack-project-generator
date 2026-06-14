@@ -1,7 +1,14 @@
 import { expect, test, describe } from "bun:test";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { computeMetrics } from "../src/metrics.ts";
+import {
+  buildSourceUrl,
+  buildStats,
+  computeMetrics,
+  computeStatusDrift,
+  criticalPath,
+  githubSlug,
+} from "../src/metrics.ts";
 import { createTelemetryHandler } from "../src/server.ts";
 import { validateEvent } from "../src/schema.ts";
 import { EventStore } from "../src/store.ts";
@@ -254,6 +261,219 @@ describe("computeMetrics", () => {
   });
 });
 
+describe("stats helpers", () => {
+  test("githubSlug 保留 CJK，删除括号标点并压空格为连字符", () => {
+    expect(githubSlug("Hello World")).toBe("hello-world");
+    expect(githubSlug("E002 统计细化（需求实现过程精细化度量）")).toBe(
+      "e002-统计细化需求实现过程精细化度量",
+    );
+    expect(githubSlug("  多   空格 / 标点!  ")).toBe("多-空格-标点");
+  });
+
+  test("buildSourceUrl 支持 repo permalink、vscode 兜底与 null", () => {
+    expect(
+      buildSourceUrl({
+        repo_url: "https://github.com/acme/repo",
+        commit: "abc123",
+        path: "docs/plan.md",
+        heading: "E002 统计细化（需求实现过程精细化度量）",
+        line: 9,
+        abs_path: "/repo/docs/plan.md",
+      }),
+    ).toBe("https://github.com/acme/repo/blob/abc123/docs/plan.md#e002-统计细化需求实现过程精细化度量");
+    expect(
+      buildSourceUrl({ repo_url: "", commit: "", path: "", heading: "", line: 12, abs_path: "/tmp/plan.md" }),
+    ).toBe("vscode://file//tmp/plan.md:12");
+    expect(buildSourceUrl({ repo_url: "", commit: "", path: "", heading: "", line: 0, abs_path: "" })).toBeNull();
+  });
+
+  test("criticalPath 线性链、分叉取高权重、无边返空", () => {
+    const linear = criticalPath([
+      { id: "T001", deps: [], plan: { estimate_tokens: [100, 100] } },
+      { id: "T002", deps: ["T001"], plan: { estimate_tokens: [100, 100] } },
+      { id: "T003", deps: ["T002"], plan: { estimate_tokens: [100, 100] } },
+    ]);
+    expect([...linear]).toEqual(["T001", "T002", "T003"]);
+
+    const fork = criticalPath([
+      { id: "T001", deps: [], plan: { estimate_tokens: [100, 100] } },
+      { id: "T002", deps: ["T001"], plan: { estimate_tokens: [300, 300] } },
+      { id: "T003", deps: ["T001"], plan: { estimate_tokens: [100, 100] } },
+    ]);
+    expect([...fork]).toEqual(["T001", "T002"]);
+    expect([...criticalPath([{ id: "T001", deps: [], plan: { estimate_tokens: [0, 0] } }])]).toEqual([]);
+  });
+
+  test("computeStatusDrift 覆盖 R1/R2/R3 和无漂移", () => {
+    expect(
+      computeStatusDrift({ status: "未开始", actual: { turns: 1 }, children: [] }),
+    ).toEqual({ drift: true, reason: "有实测活动但状态仍未开始" });
+    expect(
+      computeStatusDrift({
+        status: "执行中",
+        actual: { turns: 0 },
+        children: [
+          { status: "已完成", actual: { turns: 0 }, children: [] },
+          { status: "已完成", actual: { turns: 0 }, children: [] },
+        ],
+      }),
+    ).toEqual({ drift: true, reason: "子项均已完成但本级未收口" });
+    expect(
+      computeStatusDrift({
+        status: "已完成",
+        actual: { turns: 0 },
+        children: [{ status: "执行中", actual: { turns: 0 }, children: [] }],
+      }),
+    ).toEqual({ drift: true, reason: "本级已收口但有子项未完成" });
+    expect(
+      computeStatusDrift({ status: "执行中", actual: { turns: 1 }, children: [] }),
+    ).toEqual({ drift: false, reason: "" });
+  });
+});
+
+describe("buildStats", () => {
+  test("输出 /stats 契约：树、偏差、dims、开发者、甘特、漂移与无计划降级", () => {
+    const plan = {
+      root: "E001",
+      generated_at: "2026-06-14T00:00:00.000Z",
+      nodes: [
+        {
+          level: "E",
+          id: "E001",
+          parent: null,
+          name: "Epic One",
+          category: "Must Deliver",
+          status: "执行中",
+          deps: [],
+          estimate_tokens: [1000, 3000],
+          estimate_hours: null,
+          source: { repo_url: "https://github.com/acme/repo", commit: "abc", path: "epic.md", heading: "Epic One", line: 1, abs_path: "" },
+          planned_start: null,
+          planned_end: null,
+        },
+        {
+          level: "S",
+          id: "S001",
+          parent: "E001",
+          name: "Sprint One",
+          category: "Must Deliver",
+          status: "未开始",
+          deps: [],
+          estimate_tokens: [1000, 3000],
+          estimate_hours: 1,
+          source: { repo_url: "", commit: "", path: "", heading: "", line: 8, abs_path: "/tmp/sprint.md" },
+          planned_start: "2026-06-10",
+          planned_end: "2026-06-11",
+        },
+        {
+          level: "T",
+          id: "T001",
+          parent: "S001",
+          name: "Task One",
+          category: "Must Deliver",
+          status: "未开始",
+          deps: [],
+          estimate_tokens: [1000, 3000],
+          estimate_hours: 0.5,
+          source: { repo_url: "", commit: "", path: "", heading: "", line: 9, abs_path: "/tmp/task.md" },
+          planned_start: null,
+          planned_end: null,
+        },
+        {
+          level: "T",
+          id: "T002",
+          parent: "S001",
+          name: "Task Two",
+          category: "Must Verify",
+          status: "已完成",
+          deps: ["T001"],
+          estimate_tokens: [0, 0],
+          estimate_hours: null,
+          source: { repo_url: "", commit: "", path: "", heading: "", line: 0, abs_path: "" },
+          planned_start: null,
+          planned_end: null,
+        },
+      ],
+    };
+    const events = [
+      ev({
+        schema_version: 2,
+        event_id: "plan-buildstats",
+        event_type: "plan_sync",
+        project_id: "p1",
+        ts: "2026-06-14T00:00:00.000Z",
+        attrs: { plan },
+      }),
+      ev({ event_type: "session_start", project_id: "p1", actor_id: "dev-a", ts: "2026-06-14T01:00:00.000Z", attrs: { session_id: "s1" } }),
+      ev({
+        event_type: "turn_complete",
+        project_id: "p1",
+        actor_id: "dev-a",
+        tool: "codex",
+        skill: "superpowers:tdd",
+        ts: "2026-06-14T01:10:00.000Z",
+        attrs: {
+          session_id: "s1",
+          epic: "E001",
+          sprint: "S001",
+          task: "T001",
+          usage: { turn_total_tokens: 2500 },
+          mcp_tools: ["shell"],
+        },
+      }),
+      ev({
+        event_type: "turn_complete",
+        project_id: "p1",
+        actor_id: "dev-a",
+        tool: "codex",
+        skill: "",
+        ts: "2026-06-14T01:20:00.000Z",
+        attrs: {
+          session_id: "s1",
+          epic: "E009",
+          sprint: "S001",
+          task: "T001",
+          usage: { turn_total_tokens: 100 },
+        },
+      }),
+    ];
+
+    const stats = buildStats(events, {
+      actors: { resolveName: (id: string) => (id === "dev-a" ? "Dev A" : id) },
+      prefs: { actor_id: "dev-a", watched_projects: ["p1"], role_view: "dev" },
+      viewer: "dev-a",
+    });
+
+    expect(stats.viewer).toEqual({ actor_id: "dev-a", display_name: "Dev A", role_view: "dev", watched_projects: ["p1"] });
+    expect(stats.dims.agent.find((kv) => kv.k === "codex")?.tokens).toBe(2600);
+    expect(stats.dims.skill.find((kv) => kv.k === "superpowers:tdd")?.tokens).toBe(2500);
+    expect(stats.dims.tool.find((kv) => kv.k === "shell")?.tokens).toBe(2500);
+    expect(stats.dims.tool.find((kv) => kv.k === "无")?.tokens).toBe(100);
+    expect(stats.developers).toEqual([{ actor_id: "dev-a", display_name: "Dev A", tokens: 2600, active_hours: 0.33, tasks_done: 2 }]);
+
+    const p1 = stats.projects.find((project) => project.id === "p1");
+    expect(p1?.level).toBe("P");
+    const epic = p1?.epics[0];
+    const sprint = epic?.children[0];
+    const task = sprint?.children.find((node) => node.id === "T001");
+    const zeroEstimate = sprint?.children.find((node) => node.id === "T002");
+    expect(task?.actual).toEqual({ tokens: 2500, active_hours: 0.17, sessions: 1, turns: 1 });
+    expect(task?.deviation).toEqual({ tokens: 500, hours: -0.3 });
+    expect(task?.status_drift).toEqual({ drift: true, reason: "有实测活动但状态仍未开始" });
+    expect(task?.source_url).toBe("vscode://file//tmp/task.md:9");
+    expect(zeroEstimate?.deviation.tokens).toBeNull();
+    expect(sprint?.gantt).toMatchObject({ start: "2026-06-10", end: "2026-06-11", status4: "未开始", critical: false });
+    expect(zeroEstimate?.gantt.critical).toBe(true);
+
+    const unplannedEpic = p1?.epics.find((node) => node.id === "E009");
+    expect(unplannedEpic?.status).toBe("");
+    expect(unplannedEpic?.plan).toEqual({ estimate_tokens: [0, 0], estimate_hours: null });
+    expect(unplannedEpic?.actual.tokens).toBe(100);
+    expect(unplannedEpic?.deviation).toEqual({ tokens: null, hours: null });
+    expect(unplannedEpic?.source_url).toBeNull();
+  });
+});
+
 describe("EventStore", () => {
   test("插入幂等 + 查询过滤", () => {
     const store = new EventStore(":memory:");
@@ -465,6 +685,30 @@ describe("server actors API", () => {
     );
     expect(ok.status).toBe(200);
     expect(await ok.json()).toEqual({ actor_id: "dev-2", display_name: "Allowed", role: "dev" });
+    store.close();
+  });
+});
+
+describe("server stats API", () => {
+  test("GET /stats 返回 buildStats 契约形状并带 viewer", async () => {
+    const store = new EventStore(":memory:");
+    store.insert(ev({ actor_id: "viewer-1", project_id: "p-route", event_id: "stats-route-1" }));
+    store.upsertActor({ actor_id: "viewer-1", display_name: "Viewer One", role: "dev" });
+    const fetch = createTelemetryHandler(store, "");
+
+    const res = await fetch(new Request("http://local/stats?project=p-route&actor=viewer-1"));
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.viewer).toEqual({
+      actor_id: "viewer-1",
+      display_name: "Viewer One",
+      role_view: "dev",
+      watched_projects: ["p-route"],
+    });
+    expect(body).toHaveProperty("projects");
+    expect(body).toHaveProperty("dims");
+    expect(body).toHaveProperty("developers");
+    expect(body).not.toHaveProperty("total_events");
     store.close();
   });
 });

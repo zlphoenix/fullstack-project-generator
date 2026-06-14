@@ -1,5 +1,5 @@
 // 从事件流派生运营指标。纯函数，便于测试。
-import type { TelemetryEvent } from "./schema.ts";
+import type { PlanNode, PlanSource, PlanSnapshot, TelemetryEvent, ZhStatus } from "./schema.ts";
 
 export interface DurationStat {
   count: number;
@@ -38,6 +38,52 @@ export interface Metrics {
   tokens_total: number;
   active_hours_by_phase: Record<string, number>; // 同 session 相邻 turn 间隔（<30min）归集到后一个 turn 的 phase
   active_hours_total: number;
+}
+
+export interface KV {
+  k: string;
+  tokens: number;
+}
+
+export interface NodeStat {
+  level: "P" | "E" | "S" | "T";
+  id: string;
+  name: string;
+  status: ZhStatus | "";
+  plan: { estimate_tokens: [number, number]; estimate_hours: number | null };
+  actual: { tokens: number; active_hours: number; sessions: number; turns: number };
+  deviation: { tokens: number | null; hours: number | null };
+  source_url: string | null;
+  status_drift: { drift: boolean; reason: string };
+  gantt: {
+    start: string | null;
+    end: string | null;
+    status4: "未开始" | "执行中" | "已挂起" | "已关闭";
+    blocked: boolean;
+    critical: boolean;
+    deps: string[];
+  };
+  children: NodeStat[];
+}
+
+export interface ProjectStat extends Omit<NodeStat, "level"> {
+  level: "P";
+  epics: NodeStat[];
+}
+
+export interface Stats {
+  generated_at: string;
+  viewer: { actor_id: string; display_name: string; role_view: string; watched_projects: string[] };
+  projects: ProjectStat[];
+  dims: { agent: KV[]; skill: KV[]; tool: KV[] };
+  developers: { actor_id: string; display_name: string; tokens: number; active_hours: number; tasks_done: number }[];
+}
+
+export interface BuildStatsOptions {
+  actors?: { resolveName(id: string): string };
+  prefs?: { actor_id: string; watched_projects: string[]; role_view: string };
+  project?: string;
+  viewer?: string;
 }
 
 function hoursBetween(a: string, b: string): number {
@@ -99,6 +145,22 @@ function addTokens(map: Record<string, TokenStat>, key: string, tokens: number) 
   const s = (map[key] ??= { turns: 0, total_tokens: 0 });
   s.turns++;
   s.total_tokens += tokens;
+}
+
+function addNumber(map: Record<string, number>, key: string, value: number) {
+  map[key] = (map[key] ?? 0) + value;
+}
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function taskKey(epic: unknown, sprint: unknown, task: unknown): string {
+  return `${epic ?? "-"}/${sprint ?? "-"}/${task ?? "-"}`;
 }
 
 const IDLE_GAP_HOURS = 0.5; // 同 session 相邻 turn 间隔超过 30 分钟视为空闲，不计入活跃耗时
@@ -212,5 +274,376 @@ export function computeMetrics(events: TelemetryEvent[]): Metrics {
     tokens_total: tokensTotal,
     active_hours_by_phase: activeByPhase,
     active_hours_total: round2(activeTotal),
+  };
+}
+
+export function githubSlug(heading: string): string {
+  return heading
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\s-]/gu, "")
+    .replace(/\s+/g, "-");
+}
+
+export function buildSourceUrl(source: PlanSource): string | null {
+  if (source.repo_url) {
+    return `${source.repo_url}/blob/${source.commit}/${source.path}#${githubSlug(source.heading)}`;
+  }
+  if (source.abs_path) return `vscode://file/${source.abs_path}:${source.line}`;
+  return null;
+}
+
+function mid(tokens: [number, number]): number {
+  return Math.round((tokens[0] + tokens[1]) / 2);
+}
+
+export function criticalPath(nodes: { id: string; deps?: string[]; gantt?: { deps: string[] }; plan: { estimate_tokens: [number, number] } }[]): Set<string> {
+  const depsOf = (node: { deps?: string[]; gantt?: { deps: string[] } }) => node.deps ?? node.gantt?.deps ?? [];
+  if (!nodes.some((node) => depsOf(node).length > 0)) return new Set();
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const children = new Map<string, string[]>();
+  const indegree = new Map<string, number>();
+  for (const node of nodes) indegree.set(node.id, 0);
+  for (const node of nodes) {
+    for (const dep of depsOf(node)) {
+      if (!byId.has(dep)) continue;
+      (children.get(dep) ?? children.set(dep, []).get(dep)!).push(node.id);
+      indegree.set(node.id, (indegree.get(node.id) ?? 0) + 1);
+    }
+  }
+  const queue = nodes.filter((node) => (indegree.get(node.id) ?? 0) === 0).map((node) => node.id);
+  const score = new Map<string, number>();
+  const prev = new Map<string, string | null>();
+  for (const id of queue) {
+    const node = byId.get(id)!;
+    score.set(id, mid(node.plan.estimate_tokens) || 1);
+    prev.set(id, null);
+  }
+  for (let i = 0; i < queue.length; i++) {
+    const id = queue[i];
+    for (const child of children.get(id) ?? []) {
+      const childNode = byId.get(child)!;
+      const candidate = (score.get(id) ?? 0) + (mid(childNode.plan.estimate_tokens) || 1);
+      if (candidate > (score.get(child) ?? -Infinity)) {
+        score.set(child, candidate);
+        prev.set(child, id);
+      }
+      indegree.set(child, (indegree.get(child) ?? 0) - 1);
+      if (indegree.get(child) === 0) queue.push(child);
+    }
+  }
+  let best = "";
+  let bestScore = -Infinity;
+  for (const [id, value] of score.entries()) {
+    if (value > bestScore) {
+      best = id;
+      bestScore = value;
+    }
+  }
+  const path = new Set<string>();
+  for (let id: string | null | undefined = best; id; id = prev.get(id)) path.add(id);
+  return new Set([...path].reverse());
+}
+
+function status4(status: ZhStatus | ""): "未开始" | "执行中" | "已挂起" | "已关闭" {
+  if (status === "已完成") return "已关闭";
+  if (status === "搁置") return "已挂起";
+  if (status === "未开始" || status === "") return "未开始";
+  return "执行中";
+}
+
+type DriftInput = {
+  status: ZhStatus | "";
+  actual: { turns: number };
+  children: DriftInput[];
+};
+
+function descendants(node: DriftInput): DriftInput[] {
+  return node.children.flatMap((child) => [child, ...descendants(child)]);
+}
+
+export function computeStatusDrift(node: DriftInput): { drift: boolean; reason: string } {
+  const all = [node, ...descendants(node)];
+  if (all.some((item) => item.actual.turns > 0) && (node.status === "未开始" || node.status === "")) {
+    return { drift: true, reason: "有实测活动但状态仍未开始" };
+  }
+  if (node.children.length > 0 && node.children.every((child) => child.status === "已完成") && node.status !== "已完成") {
+    return { drift: true, reason: "子项均已完成但本级未收口" };
+  }
+  if (
+    (node.status === "已完成" || node.status === "已验证") &&
+    descendants(node).some((child) => !["已完成", "已验证", "搁置"].includes(child.status))
+  ) {
+    return { drift: true, reason: "本级已收口但有子项未完成" };
+  }
+  return { drift: false, reason: "" };
+}
+
+interface ActualBucket {
+  tokens: number;
+  active_hours: number;
+  sessions: Set<string>;
+  turns: number;
+  start: string | null;
+  end: string | null;
+}
+
+function emptyActual(): ActualBucket {
+  return { tokens: 0, active_hours: 0, sessions: new Set(), turns: 0, start: null, end: null };
+}
+
+function addActual(target: ActualBucket, source: ActualBucket) {
+  target.tokens += source.tokens;
+  target.active_hours += source.active_hours;
+  target.turns += source.turns;
+  for (const session of source.sessions) target.sessions.add(session);
+  if (source.start && (!target.start || source.start < target.start)) target.start = source.start;
+  if (source.end && (!target.end || source.end > target.end)) target.end = source.end;
+}
+
+function actualOut(bucket: ActualBucket): NodeStat["actual"] {
+  return {
+    tokens: bucket.tokens,
+    active_hours: round2(bucket.active_hours),
+    sessions: bucket.sessions.size,
+    turns: bucket.turns,
+  };
+}
+
+function deviation(actual: NodeStat["actual"], plan: NodeStat["plan"]): NodeStat["deviation"] {
+  const m = mid(plan.estimate_tokens);
+  return {
+    tokens: m > 0 ? actual.tokens - m : null,
+    hours: plan.estimate_hours !== null ? round1(actual.active_hours - plan.estimate_hours) : null,
+  };
+}
+
+function kvList(map: Record<string, number>): KV[] {
+  return Object.entries(map)
+    .map(([k, tokens]) => ({ k, tokens }))
+    .sort((a, b) => b.tokens - a.tokens || a.k.localeCompare(b.k));
+}
+
+function planFromEvent(event: TelemetryEvent): PlanSnapshot | null {
+  const plan = (event.attrs as { plan?: PlanSnapshot }).plan;
+  return plan?.root ? plan : null;
+}
+
+export function buildStats(events: TelemetryEvent[], options: BuildStatsOptions = {}): Stats {
+  const filtered = options.project ? events.filter((event) => event.project_id === options.project) : events;
+  const resolveName = options.actors?.resolveName ?? ((id: string) => id);
+  const viewerId = options.viewer ?? options.prefs?.actor_id ?? "anonymous";
+  const prefs = options.prefs ?? {
+    actor_id: viewerId,
+    watched_projects: [...new Set(filtered.filter((event) => event.actor_id === viewerId).map((event) => event.project_id))].sort(),
+    role_view: "dev",
+  };
+
+  const latestPlans = new Map<string, { project_id: string; plan: PlanSnapshot; ts: string }>();
+  for (const event of filtered) {
+    if (event.event_type !== "plan_sync") continue;
+    const plan = planFromEvent(event);
+    if (!plan) continue;
+    const key = `${event.project_id}\u0000${plan.root}`;
+    const old = latestPlans.get(key);
+    if (!old || Date.parse(event.ts) >= Date.parse(old.ts)) latestPlans.set(key, { project_id: event.project_id, plan, ts: event.ts });
+  }
+
+  const actualByProjectTask = new Map<string, ActualBucket>();
+  const projectIds = new Set(filtered.map((event) => event.project_id));
+  const dims = { agent: {} as Record<string, number>, skill: {} as Record<string, number>, tool: {} as Record<string, number> };
+  const developerBuckets = new Map<string, { tokens: number; active: number; tasks: Set<string> }>();
+  const lastTs = new Map<string, string>();
+
+  for (const event of filtered) {
+    if (event.event_type === "session_start") {
+      const sid = String(event.attrs?.session_id ?? "");
+      if (sid) lastTs.set(sid, event.ts);
+      continue;
+    }
+    if (event.event_type !== "turn_complete") continue;
+    const tokens = turnTokens(event) ?? 0;
+    addNumber(dims.agent, event.tool || "unknown", tokens);
+    addNumber(dims.skill, event.skill || "(none)", tokens);
+    const tools = Array.isArray(event.attrs?.mcp_tools) ? event.attrs.mcp_tools.filter((tool) => typeof tool === "string") : [];
+    if (tools.length === 0) addNumber(dims.tool, "无", tokens);
+    for (const tool of tools) addNumber(dims.tool, tool, tokens);
+
+    const sid = String(event.attrs?.session_id ?? "");
+    const key = taskKey(event.attrs?.epic, event.attrs?.sprint, event.attrs?.task);
+    let active = 0;
+    if (sid) {
+      const prev = lastTs.get(sid);
+      if (prev) {
+        const h = hoursBetween(prev, event.ts);
+        if (h > 0 && h <= IDLE_GAP_HOURS) active = h;
+      }
+      lastTs.set(sid, event.ts);
+    }
+    const bucketKey = `${event.project_id}\u0000${key}`;
+    const bucket = actualByProjectTask.get(bucketKey) ?? emptyActual();
+    bucket.tokens += tokens;
+    bucket.active_hours += active;
+    bucket.turns += 1;
+    if (sid) bucket.sessions.add(sid);
+    if (!bucket.start || event.ts < bucket.start) bucket.start = event.ts;
+    if (!bucket.end || event.ts > bucket.end) bucket.end = event.ts;
+    actualByProjectTask.set(bucketKey, bucket);
+
+    const dev = developerBuckets.get(event.actor_id) ?? { tokens: 0, active: 0, tasks: new Set<string>() };
+    dev.tokens += tokens;
+    dev.active += active;
+    dev.tasks.add(`${event.project_id}/${key}`);
+    developerBuckets.set(event.actor_id, dev);
+  }
+
+  const actualFor = (project: string, key: string) => actualByProjectTask.get(`${project}\u0000${key}`) ?? emptyActual();
+  const projects = new Map<string, ProjectStat>();
+
+  function makeNode(
+    projectId: string,
+    planNode: PlanNode | null,
+    level: "E" | "S" | "T",
+    id: string,
+    children: NodeStat[],
+    key: string,
+  ): NodeStat {
+    const direct = actualFor(projectId, key);
+    const aggregate = emptyActual();
+    addActual(aggregate, direct);
+    for (const child of children) {
+      aggregate.tokens += child.actual.tokens;
+      aggregate.active_hours += child.actual.active_hours;
+      aggregate.turns += child.actual.turns;
+      for (let i = 0; i < child.actual.sessions; i++) aggregate.sessions.add(`${child.id}:${i}`);
+      if (child.gantt.start && (!aggregate.start || child.gantt.start < aggregate.start)) aggregate.start = child.gantt.start;
+      if (child.gantt.end && (!aggregate.end || child.gantt.end > aggregate.end)) aggregate.end = child.gantt.end;
+    }
+    const plan = {
+      estimate_tokens: planNode?.estimate_tokens ?? ([0, 0] as [number, number]),
+      estimate_hours: planNode?.estimate_hours ?? null,
+    };
+    const actual = actualOut(aggregate);
+    const status = planNode?.status ?? "";
+    const start = planNode?.planned_start ?? aggregate.start;
+    const end = planNode?.planned_end ?? aggregate.end;
+    const node: NodeStat = {
+      level,
+      id,
+      name: planNode?.name ?? id,
+      status,
+      plan,
+      actual,
+      deviation: deviation(actual, plan),
+      source_url: planNode ? buildSourceUrl(planNode.source) : null,
+      status_drift: { drift: false, reason: "" },
+      gantt: { start, end, status4: status4(status), blocked: status === "阻塞", critical: false, deps: planNode?.deps ?? [] },
+      children,
+    };
+    node.status_drift = computeStatusDrift(node);
+    return node;
+  }
+
+  const sprintToEpic = new Map<string, string>();
+  function findEpicForSprint(sprint: string): string {
+    return sprintToEpic.get(sprint) ?? "-";
+  }
+  for (const { project_id, plan } of latestPlans.values()) {
+    const byParent = new Map<string, PlanNode[]>();
+    for (const node of plan.nodes) {
+      if (node.level === "S" && node.parent) sprintToEpic.set(node.id, node.parent);
+      const parent = node.parent ?? "";
+      (byParent.get(parent) ?? byParent.set(parent, []).get(parent)!).push(node);
+    }
+    const eNodes = plan.nodes.filter((node) => node.level === "E");
+    const epics = eNodes.map((ePlan) => {
+      const sprintNodes = (byParent.get(ePlan.id) ?? []).filter((node) => node.level === "S");
+      const sStats = sprintNodes.map((sPlan) => {
+        const taskStats = (byParent.get(sPlan.id) ?? [])
+          .filter((node) => node.level === "T")
+          .map((tPlan) => makeNode(project_id, tPlan, "T", tPlan.id, [], `${sPlan.parent}/${sPlan.id}/${tPlan.id}`));
+        const critical = criticalPath(taskStats);
+        for (const task of taskStats) task.gantt.critical = critical.has(task.id);
+        return makeNode(project_id, sPlan, "S", sPlan.id, taskStats, `${sPlan.parent}/${sPlan.id}/-`);
+      });
+      const critical = criticalPath(sStats);
+      for (const sprint of sStats) sprint.gantt.critical = critical.has(sprint.id);
+      return makeNode(project_id, ePlan, "E", ePlan.id, sStats, `${ePlan.id}/-/-`);
+    });
+    const project = projects.get(project_id) ?? projectNode(project_id);
+    project.epics.push(...epics);
+    project.children = project.epics;
+    projects.set(project_id, project);
+  }
+
+  for (const [compound, bucket] of actualByProjectTask.entries()) {
+    const [projectId, key] = compound.split("\u0000");
+    const [epicId, sprintId, taskId] = key.split("/");
+    const project = projects.get(projectId) ?? projectNode(projectId);
+    if (!project.epics.some((epic) => epic.id === epicId)) {
+      const task = makeNode(projectId, null, "T", taskId, [], `${epicId}/${sprintId}/${taskId}`);
+      const sprint = makeNode(projectId, null, "S", sprintId, [task], `${epicId}/${sprintId}/-`);
+      const epic = makeNode(projectId, null, "E", epicId, [sprint], `${epicId}/-/-`);
+      project.epics.push(epic);
+      project.children = project.epics;
+      projects.set(projectId, project);
+    }
+  }
+
+  for (const projectId of projectIds) {
+    const project = projects.get(projectId) ?? projectNode(projectId);
+    const aggregate = emptyActual();
+    for (const epic of project.epics) {
+      aggregate.tokens += epic.actual.tokens;
+      aggregate.active_hours += epic.actual.active_hours;
+      aggregate.turns += epic.actual.turns;
+      for (let i = 0; i < epic.actual.sessions; i++) aggregate.sessions.add(`${epic.id}:${i}`);
+      if (epic.gantt.start && (!aggregate.start || epic.gantt.start < aggregate.start)) aggregate.start = epic.gantt.start;
+      if (epic.gantt.end && (!aggregate.end || epic.gantt.end > aggregate.end)) aggregate.end = epic.gantt.end;
+    }
+    project.actual = actualOut(aggregate);
+    project.deviation = deviation(project.actual, project.plan);
+    project.gantt.start = aggregate.start;
+    project.gantt.end = aggregate.end;
+    project.status_drift = computeStatusDrift(project);
+    projects.set(projectId, project);
+  }
+
+  return {
+    generated_at: new Date().toISOString(),
+    viewer: {
+      actor_id: viewerId,
+      display_name: resolveName(viewerId),
+      role_view: prefs.role_view,
+      watched_projects: prefs.watched_projects,
+    },
+    projects: [...projects.values()].sort((a, b) => a.id.localeCompare(b.id)),
+    dims: { agent: kvList(dims.agent), skill: kvList(dims.skill), tool: kvList(dims.tool) },
+    developers: [...developerBuckets.entries()]
+      .map(([actor_id, bucket]) => ({
+        actor_id,
+        display_name: resolveName(actor_id),
+        tokens: bucket.tokens,
+        active_hours: round2(bucket.active),
+        tasks_done: bucket.tasks.size,
+      }))
+      .sort((a, b) => b.tokens - a.tokens || a.actor_id.localeCompare(b.actor_id)),
+  };
+}
+
+function projectNode(id: string): ProjectStat {
+  return {
+    level: "P",
+    id,
+    name: id,
+    status: "",
+    plan: { estimate_tokens: [0, 0], estimate_hours: null },
+    actual: { tokens: 0, active_hours: 0, sessions: 0, turns: 0 },
+    deviation: { tokens: null, hours: null },
+    source_url: null,
+    status_drift: { drift: false, reason: "" },
+    gantt: { start: null, end: null, status4: "未开始", blocked: false, critical: false, deps: [] },
+    children: [],
+    epics: [],
   };
 }

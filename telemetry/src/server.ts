@@ -8,7 +8,7 @@
 //   FPG_TELEMETRY_TOKEN   若设置，则 /events 需带 Authorization: Bearer <token>
 import { EventStore } from "./store.ts";
 import { validateEvent } from "./schema.ts";
-import { computeMetrics } from "./metrics.ts";
+import { buildStats, computeMetrics } from "./metrics.ts";
 import { renderDashboard } from "./dashboard.ts";
 
 const PORT = Number(process.env.FPG_TELEMETRY_PORT ?? 10000);
@@ -46,7 +46,15 @@ export function createTelemetryHandler(store: EventStore, token: string) {
 
     if (req.method === "GET" && url.pathname === "/stats") {
       const project = url.searchParams.get("project") ?? undefined;
-      return json(computeMetrics(store.all(project ? { project_id: project } : undefined)));
+      const actor = url.searchParams.get("actor") ?? "anonymous";
+      return json(
+        buildStats(store.all(project ? { project_id: project } : undefined), {
+          actors: { resolveName: (id: string) => store.resolveName(id) },
+          prefs: store.getPrefs(actor),
+          project,
+          viewer: actor,
+        }),
+      );
     }
 
     // 度量看板：浏览器打开 http://localhost:10000/report[?project=xxx]
