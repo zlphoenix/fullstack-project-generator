@@ -14,6 +14,10 @@
    ```bash
    mkdir -p .fpg && printf 'epic=E001\nsprint=S001\ntask=T001\nplatform=backend\nskill=sprint-develop\nphase=sprint_develop\n' > .fpg/current-task
    ```
+7. 状态既已置 `执行中`，best-effort 同步计划侧到遥测（失败不阻断、不影响切片）：
+   ```bash
+   [ -n "$FPG_HOME" ] && bash "$FPG_HOME/telemetry/plan-sync.sh" --epic-dir <epic-dir> --project <项目名kebab>
+   ```
 
 ## 执行中（红线）
 
@@ -30,9 +34,13 @@
 
 ## 收尾
 
-1. 更新 Sprint `plan.md` 该 Task 行：状态（`已实现`，独立验证后才是 `已验证`）+ 证据链接。
-2. `worklog.md`/`smoke-report.md` 对应分节记录过程与验证证据（一次性产物入 `evidence/`，可复用脚本入项目测试/脚本目录）。
-3. 更新 `PROGRESS.md`；描述性 commit（`feat(...): 实现 T001 ...`）。
-4. 删除归因标记：`rm -f .fpg/current-task`。
+1. 更新 Sprint `plan.md` 该 Task 行：状态（`已实现`，独立验证后才是 `已验证`）+ 证据链接；状态变化同步父级 `plan.md` 对应直接下级行。
+2. best-effort 同步计划侧到遥测（让看板及时反映新状态，失败不阻断）：
+   ```bash
+   [ -n "$FPG_HOME" ] && bash "$FPG_HOME/telemetry/plan-sync.sh" --epic-dir <epic-dir> --project <项目名kebab>
+   ```
+3. `worklog.md`/`smoke-report.md` 对应分节记录过程与验证证据（一次性产物入 `evidence/`，可复用脚本入项目测试/脚本目录）。
+4. 更新 `PROGRESS.md`；描述性 commit（`feat(...): 实现 T001 ...`）。
+5. 删除归因标记：`rm -f .fpg/current-task`。
 
 > 不回填 token/耗时——看遥测看板（`GET /report`）。
