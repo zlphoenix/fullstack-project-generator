@@ -35,8 +35,8 @@
 | `contract_change` | API 契约变更 | `version?` |
 | `verification` | 一次验证/验收（编译/测试/AC） | `kind`(compile\|test\|ac\|e2e), `outcome` |
 | `session_start` | 会话开始（**工具 hook 自动**：Claude SessionStart） | `hook`, `session_id` |
-| `turn_complete` | 一个 agent 回合结束（**工具 hook 自动**：Codex notify / Claude Stop） | `codex_event`/`hook`, `turn_id`, `session_id`, `usage`, E/S/T 归因 |
-| `plan_sync` | `plan-sync.sh` 同步计划侧 E/S/T 快照 | `plan` |
+| `turn_complete` | 一个 agent 回合结束（**工具 hook 自动**：Codex notify / Claude Stop） | `codex_event`/`hook`, `turn_id`, `session_id`, `usage`, `project_root`, E/S/T 归因 |
+| `plan_sync` | `plan-sync.sh` 同步计划侧 E/S/T 快照 | `project_root`, `plan` |
 
 > `session_start` / `turn_complete` 由**工具侧 hook 自动发出**（见 `hooks/`），不依赖模型在 SKILL 里自觉调用 emit——这是"使用即度量"可靠性的关键。其余事件仍由 SKILL 在关键时机 best-effort 发出。
 
@@ -101,16 +101,19 @@ token/耗时归因到 Epic/Sprint/Task 靠项目根的 `.fpg/current-task`（k=v
 ```text
 epic=E001
 epic_name=统计细化
+epic_path=docs/iteration/epics/E001-demo/plan.md
 sprint=S001
 sprint_name=看板下钻
+sprint_path=docs/iteration/epics/E001-demo/sprints/S001-demo/plan.md
 task=T003
 task_name=实现关注配置
+task_path=docs/iteration/epics/E001-demo/sprints/S001-demo/plan.md
 platform=backend
 skill=sprint-develop
 phase=sprint_develop
 ```
 
-hook 上报时自动读取：`epic/sprint/task/story/platform` 与可选的 `epic_name/sprint_name/task_name` 并入 attrs；`skill/phase/milestone` 覆盖事件同名字段。`*_name` 用于无 `plan_sync` 快照时显示明确记录过的中文短名；没有记录则看板留空，不用 ID 猜。文件不存在时事件照常发出（仅无归因）。该文件应加入用户项目 `.gitignore`。
+hook 上报时自动读取：`project_root` 来自 payload `cwd` 的绝对路径；`epic/sprint/task/story/platform` 与可选的 `epic_name/sprint_name/task_name`、`epic_path/sprint_path/task_path` 并入 attrs；`skill/phase/milestone` 覆盖事件同名字段。`*_name` 用于无 `plan_sync` 快照时显示明确记录过的中文短名；`*_path` 是相对 `project_root` 的文档路径，用于来源列补 `vscode://file` 链接。没有记录则看板留空/无来源，不用 ID 猜。文件不存在时事件照常发出（仅无归因）。该文件应加入用户项目 `.gitignore`。
 
 ## 示例
 

@@ -60,6 +60,7 @@ export FPG_TOOL="claude"         # claude|codex（install.sh 按工具分别写�
 说明：
 - 下钻里的 E/S/T 名称优先来自 `plan-sync.sh` 解析到的 plan；若只有历史 instrumentation 归因而没有 plan 快照，名称为空，不用 ID 猜。
 - `.fpg/current-task` 可选写 `epic_name` / `sprint_name` / `task_name`，用于无 plan 快照时补充明确记录过的中文短名。
+- 项目元数据会记录到 `/stats.projects[].meta.root_dir`；`.fpg/current-task` 可选写 `epic_path` / `sprint_path` / `task_path`（相对项目根目录），无 plan 快照时来源列可据此生成本地文件链接。
 - 计划列 `0 / —` 表示该节点没有匹配到计划估算基线；运行对应项目的 `plan-sync.sh` 后才会出现计划值。
 - 状态旁的“⚠ 状态疑似过期”表示有实测活动但 plan 状态仍是未开始/空，或父子状态不一致；看板只提示，不自动改 plan。
 - Tool 维度的“未调用 MCP”对应 `/stats` JSON 里的键 `"无"`，表示该 turn 没记录到 MCP 工具调用。

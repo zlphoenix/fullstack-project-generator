@@ -538,6 +538,35 @@ describe("buildStats", () => {
     expect(unnamedEpic?.children[0].children[0].name).toBe("");
   });
 
+  test("项目元数据携带本地根目录，无计划节点可由相对路径补来源链接", () => {
+    const stats = buildStats([
+      ev({
+        event_type: "turn_complete",
+        project_id: "p-source",
+        attrs: {
+          project_root: "/repo/demo",
+          epic: "E100",
+          sprint: "S001",
+          task: "T001",
+          epic_path: "docs/iteration/epics/E100-demo/plan.md",
+          sprint_path: "docs/iteration/epics/E100-demo/sprints/S001-demo/plan.md",
+          task_path: "docs/iteration/epics/E100-demo/sprints/S001-demo/plan.md",
+          usage: { turn_total_tokens: 10 },
+        },
+      }),
+    ]);
+
+    const project = stats.projects[0];
+    const epic = project.epics[0];
+    const sprint = epic.children[0];
+    const task = sprint.children[0];
+
+    expect(project.meta.root_dir).toBe("/repo/demo");
+    expect(epic.source_url).toBe("vscode://file//repo/demo/docs/iteration/epics/E100-demo/plan.md:1");
+    expect(sprint.source_url).toBe("vscode://file//repo/demo/docs/iteration/epics/E100-demo/sprints/S001-demo/plan.md:1");
+    expect(task.source_url).toBe("vscode://file//repo/demo/docs/iteration/epics/E100-demo/sprints/S001-demo/plan.md:1");
+  });
+
   test("父级 sessions 使用真实 session 去重，同一 session 多任务不重复计数", () => {
     const plan = {
       root: "E010",

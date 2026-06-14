@@ -68,6 +68,7 @@ export interface NodeStat {
 
 export interface ProjectStat extends Omit<NodeStat, "level"> {
   level: "P";
+  meta: { root_dir: string | null };
   epics: NodeStat[];
 }
 
@@ -398,6 +399,7 @@ interface ActualBucket {
 interface BuiltNode {
   projectId: string;
   planNode: PlanNode | null;
+  sourceUrl: string | null;
   key: string;
   children: BuiltNode[];
   stat: NodeStat;
@@ -421,6 +423,23 @@ function rememberName(names: Map<string, string>, projectId: string, level: "E" 
 
 function rememberedName(names: Map<string, string>, projectId: string, level: "E" | "S" | "T", key: string): string {
   return names.get(`${projectId}\u0000${level}\u0000${key}`) ?? "";
+}
+
+function rememberMeta(meta: Map<string, { root_dir: string | null }>, projectId: string, rootDir: string) {
+  if (!rootDir) return;
+  const old = meta.get(projectId) ?? { root_dir: null };
+  if (!old.root_dir) meta.set(projectId, { root_dir: rootDir });
+}
+
+function joinPath(root: string, relativePath: string): string {
+  if (!root || !relativePath) return "";
+  if (relativePath.startsWith("/")) return relativePath;
+  return `${root.replace(/\/+$/, "")}/${relativePath.replace(/^\/+/, "")}`;
+}
+
+function makeFileUrl(root: string | null, relativePath: string): string | null {
+  if (!root || !relativePath) return null;
+  return `vscode://file/${joinPath(root, relativePath)}:1`;
 }
 
 function addActual(target: ActualBucket, source: ActualBucket) {
@@ -493,14 +512,24 @@ export function buildStats(events: TelemetryEvent[], options: BuildStatsOptions 
   const developerBuckets = new Map<string, { tokens: number; active: number; tasks: Set<string> }>();
   const lastTs = new Map<string, string>();
   const actualNames = new Map<string, string>();
+  const projectMeta = new Map<string, { root_dir: string | null }>();
+  const actualSources = new Map<string, string | null>();
 
   for (const event of filtered) {
     const epicKey = typeof event.attrs?.epic === "string" ? event.attrs.epic : "";
     const sprintKey = typeof event.attrs?.sprint === "string" ? event.attrs.sprint : "";
     const taskId = typeof event.attrs?.task === "string" ? event.attrs.task : "";
+    const rootDir = stringAttr(event.attrs, "project_root");
+    rememberMeta(projectMeta, event.project_id, rootDir);
     rememberName(actualNames, event.project_id, "E", epicKey, stringAttr(event.attrs, "epic_name"));
     rememberName(actualNames, event.project_id, "S", epicKey && sprintKey ? `${epicKey}/${sprintKey}/-` : "", stringAttr(event.attrs, "sprint_name"));
     rememberName(actualNames, event.project_id, "T", epicKey && sprintKey && taskId ? `${epicKey}/${sprintKey}/${taskId}` : "", stringAttr(event.attrs, "task_name"));
+    const epicSource = makeFileUrl(rootDir, stringAttr(event.attrs, "epic_path"));
+    const sprintSource = makeFileUrl(rootDir, stringAttr(event.attrs, "sprint_path"));
+    const taskSource = makeFileUrl(rootDir, stringAttr(event.attrs, "task_path"));
+    if (epicKey && epicSource && !actualSources.has(`${event.project_id}\u0000E\u0000${epicKey}`)) actualSources.set(`${event.project_id}\u0000E\u0000${epicKey}`, epicSource);
+    if (epicKey && sprintKey && sprintSource && !actualSources.has(`${event.project_id}\u0000S\u0000${epicKey}/${sprintKey}/-`)) actualSources.set(`${event.project_id}\u0000S\u0000${epicKey}/${sprintKey}/-`, sprintSource);
+    if (epicKey && sprintKey && taskId && taskSource && !actualSources.has(`${event.project_id}\u0000T\u0000${epicKey}/${sprintKey}/${taskId}`)) actualSources.set(`${event.project_id}\u0000T\u0000${epicKey}/${sprintKey}/${taskId}`, taskSource);
     if (event.event_type === "session_start") {
       const sid = String(event.attrs?.session_id ?? "");
       if (sid) lastTs.set(sid, event.ts);
@@ -563,6 +592,9 @@ export function buildStats(events: TelemetryEvent[], options: BuildStatsOptions 
     const status = planNode?.status ?? "";
     const start = planNode?.planned_start ?? aggregate.start;
     const end = planNode?.planned_end ?? aggregate.end;
+    const sourceUrl = planNode
+      ? buildSourceUrl(planNode.source)
+      : actualSources.get(`${projectId}\u0000${level}\u0000${level === "E" ? id : key}`) ?? null;
     const node: NodeStat = {
       level,
       id,
@@ -571,13 +603,13 @@ export function buildStats(events: TelemetryEvent[], options: BuildStatsOptions 
       plan,
       actual,
       deviation: deviation(actual, plan),
-      source_url: planNode ? buildSourceUrl(planNode.source) : null,
+      source_url: sourceUrl,
       status_drift: { drift: false, reason: "" },
       gantt: { start, end, status4: status4(status), blocked: status === "阻塞", critical: false, deps: planNode?.deps ?? [] },
       children: children.map((child) => child.stat),
     };
     node.status_drift = computeStatusDrift(node);
-    return { projectId, planNode, key, children, stat: node, bucket: aggregate };
+    return { projectId, planNode, sourceUrl, key, children, stat: node, bucket: aggregate };
   }
 
   function refreshNode(node: BuiltNode): void {
@@ -651,6 +683,7 @@ export function buildStats(events: TelemetryEvent[], options: BuildStatsOptions 
 
   for (const projectId of projectIds) {
     const project = projects.get(projectId) ?? builtProjectNode(projectId);
+    project.stat.meta = projectMeta.get(projectId) ?? { root_dir: null };
     for (const epic of project.epics) refreshNode(epic);
     const aggregate = aggregateChildren(emptyActual(), project.epics);
     project.stat.epics = project.epics.map((epic) => epic.stat);
@@ -694,6 +727,7 @@ function projectNode(id: string): ProjectStat {
     level: "P",
     id,
     name: id,
+    meta: { root_dir: null },
     status: "",
     plan: { estimate_tokens: [0, 0], estimate_hours: null },
     actual: { tokens: 0, active_hours: 0, sessions: 0, turns: 0 },

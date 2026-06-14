@@ -162,13 +162,14 @@ interface NodeStat {
   gantt: { start: string|null; end: string|null; status4: "未开始"|"执行中"|"已挂起"|"已关闭"; blocked: boolean; critical: boolean; deps: string[] };
   children: NodeStat[];
 }
-interface ProjectStat extends Omit<NodeStat,"level"> { level: "P"; epics: NodeStat[] }
+interface ProjectStat extends Omit<NodeStat,"level"> { level: "P"; meta: { root_dir: string|null }; epics: NodeStat[] }
 ```
 计算规则：
 - **树**：project → epics(E) → sprints(S) → tasks(T)，E/S/T 来自最新 plan 快照；actual 来自 instrumentation 按 `(epic,sprint,task)` 归因（`.fpg/current-task` 已写入 `turn_complete.attrs`）。某层 actual = 自身直接归因 + 后代汇总。
 - **actual.tokens** = Σ `turn_total_tokens`（沿用现有 `turnTokens`）。**active_hours** = 现有「相邻 turn 间隔 <30min」近似，按 `(epic,sprint,task)` 归集（扩展 `metrics`，新增 `active_hours_by_task`）。**sessions/turns** 计数同理。
 - **deviation.tokens** = `actual.tokens − mid`，`mid=round((lo+hi)/2)`；`lo=hi=0`（无估算）→ `null`。**deviation.hours** = `estimate_hours!=null ? round(actual.active_hours−estimate_hours,1) : null`。
-- **plan 缺失**（没跑过 plan_sync）：该节点只有 instrumentation 归因时，仍建节点（id 来自归因），`plan.estimate_*` 取 0/null、`deviation` null、`status:""`、`source_url:null`。看板优雅降级。
+- **项目元数据**：`turn_complete.attrs.project_root` / `plan_sync.attrs.project_root` 记录本地项目根目录，进入 `ProjectStat.meta.root_dir`。`.fpg/current-task` 可选写 `epic_path/sprint_path/task_path`（相对 `project_root`）作为无 plan 快照时的来源补链。
+- **plan 缺失**（没跑过 plan_sync）：该节点只有 instrumentation 归因时，仍建节点（id 来自归因），`plan.estimate_*` 取 0/null、`deviation` null、`status:""`；`source_url` 优先 `planNode.source`，否则若有 `project_root + *_path` 则生成 `vscode://file/<root>/<relative>:1`，仍无则 `null`。看板优雅降级。
 - **dims**：`agent` 按 `event.tool`，`skill` 按 `event.skill`（含非内置如 `superpowers:tdd`），`tool` 按 `turn_complete.attrs.mcp_tools[]`/`tool_hook` 记录的 mcp 工具名；某 turn 无 tool → 计入键 `"无"`。三者**并列、不嵌套**。
 - **developers**：按 `events.actor_id` 分组，名字 `resolveName`。
 - **status_drift**：按 §6.1 规则计算（`buildStats`，需要 plan 树 + 归因 + verification）。

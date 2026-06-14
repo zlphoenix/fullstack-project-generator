@@ -43,6 +43,8 @@ _clean() { printf '%s' "$1" | tr -d '\000-\037"\\' ; }
 attrs_extra=""
 m_skill="${FPG_SKILL:-}"; m_phase="turn"; m_milestone="${FPG_MILESTONE:-}"
 marker="${cwd:-$PWD}/.fpg/current-task"
+project_root="$(cd "${cwd:-$PWD}" 2>/dev/null && pwd -P)"
+[ -n "$project_root" ] && attrs_extra="$attrs_extra,\"project_root\":\"$(_clean "$project_root")\""
 if [ -f "$marker" ]; then
   while IFS='=' read -r k v; do
     [ -z "$k" ] && continue

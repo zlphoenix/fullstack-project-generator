@@ -139,6 +139,16 @@ git_head() {
   git -C "$EPIC_DIR" rev-parse HEAD 2>/dev/null || true
 }
 
+project_root() {
+  local root
+  root="$(git -C "$EPIC_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [ -n "$root" ]; then
+    printf '%s' "$root"
+    return
+  fi
+  cd "$EPIC_DIR" 2>/dev/null && pwd -P
+}
+
 source_path() {
   local file="$1" root rel
   rel="$(git -C "$EPIC_DIR" ls-files --full-name -- "$file" 2>/dev/null || true)"
@@ -314,6 +324,7 @@ SNAPSHOT='{"root":"","generated_at":"","nodes":[]}'
 if [ -n "$EPIC_DIR" ] && [ -d "$EPIC_DIR" ] && [ -f "$EPIC_DIR/plan.md" ]; then
   ROOT="$(basename "$EPIC_DIR" | grep -Eo '^E[0-9]+' || true)"
   if [ -n "$ROOT" ]; then
+    PROJECT_ROOT="$(project_root)"
     REPO_URL="$(repo_url)"
     COMMIT="$(git_head)"
     EPIC_PLAN="$EPIC_DIR/plan.md"
@@ -342,9 +353,9 @@ if [ "$DRY_RUN" -eq 1 ]; then
 fi
 
 if [ -n "$ENDPOINT" ]; then
-  FPG_TELEMETRY_ENDPOINT="$ENDPOINT" "$EMIT_SH" --event-type plan_sync --project "$PROJECT" --attrs "{\"plan\":$SNAPSHOT}" >/dev/null 2>&1 || true
+  FPG_TELEMETRY_ENDPOINT="$ENDPOINT" "$EMIT_SH" --event-type plan_sync --project "$PROJECT" --attrs "{\"project_root\":\"$(json_escape "${PROJECT_ROOT:-}")\",\"plan\":$SNAPSHOT}" >/dev/null 2>&1 || true
 else
-  "$EMIT_SH" --event-type plan_sync --project "$PROJECT" --attrs "{\"plan\":$SNAPSHOT}" >/dev/null 2>&1 || true
+  "$EMIT_SH" --event-type plan_sync --project "$PROJECT" --attrs "{\"project_root\":\"$(json_escape "${PROJECT_ROOT:-}")\",\"plan\":$SNAPSHOT}" >/dev/null 2>&1 || true
 fi
 
 exit 0
