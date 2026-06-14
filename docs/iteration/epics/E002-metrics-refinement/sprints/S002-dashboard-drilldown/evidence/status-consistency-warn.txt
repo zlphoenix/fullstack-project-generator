@@ -1,0 +1,7 @@
+OK   list_header: 下级清单表头含 ID/名称/状态
+OK   status_vocab: 检测到中文状态值
+OK   mermaid: 含 Mermaid 依赖图
+OK   termination_contract: 含「终止契约」区块
+OK   structure_decision: 含「结构决策」行
+WARN status_consistency: 状态过期：父级应至少为执行中
+判定：通过（0 硬阻断 / 1 项提示）——WARN 仅为提示，可继续本切片。

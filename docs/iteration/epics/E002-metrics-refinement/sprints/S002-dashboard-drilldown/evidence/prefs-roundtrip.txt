@@ -1,0 +1,3 @@
+{"actor_id":"allen","watched_projects":["fullstack-project-generator","industry","side-project"],"role_view":"dev"}
+{"actor_id":"allen","watched_projects":["fullstack-project-generator"],"role_view":"dev"}
+{"actor_id":"allen","watched_projects":["fullstack-project-generator"],"role_view":"dev"}
