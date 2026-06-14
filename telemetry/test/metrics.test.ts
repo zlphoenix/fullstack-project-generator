@@ -2,6 +2,7 @@ import { expect, test, describe } from "bun:test";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { computeMetrics } from "../src/metrics.ts";
+import { createTelemetryHandler } from "../src/server.ts";
 import { validateEvent } from "../src/schema.ts";
 import { EventStore } from "../src/store.ts";
 import type { TelemetryEvent } from "../src/schema.ts";
@@ -410,5 +411,60 @@ describe("plan-sync.sh", () => {
     expect(smoke?.status).toBe("未开始");
     expect(smoke?.estimate_tokens).toEqual([2000, 2000]);
     expect(smoke?.estimate_hours).toBeNull();
+  });
+});
+
+describe("server actors API", () => {
+  test("GET/PUT /api/actors 往返，空 display_name 返回 400，事件 actor_id 不变", async () => {
+    const store = new EventStore(":memory:");
+    store.insert(ev({ actor_id: "dev-1", event_id: "server-actor-1" }));
+    const fetch = createTelemetryHandler(store, "");
+
+    const before = await fetch(new Request("http://local/api/actors"));
+    expect(before.status).toBe(200);
+    expect(await before.json()).toEqual([{ actor_id: "dev-1", display_name: "Allen", role: "dev" }]);
+
+    const renamed = await fetch(
+      new Request("http://local/api/actors/dev-1", {
+        method: "PUT",
+        body: JSON.stringify({ display_name: "Dev One", role: "qa" }),
+      }),
+    );
+    expect(renamed.status).toBe(200);
+    expect(await renamed.json()).toEqual({ actor_id: "dev-1", display_name: "Dev One", role: "qa" });
+    expect(store.all()[0].actor_id).toBe("dev-1");
+
+    const bad = await fetch(
+      new Request("http://local/api/actors/dev-1", {
+        method: "PUT",
+        body: JSON.stringify({ display_name: "" }),
+      }),
+    );
+    expect(bad.status).toBe(400);
+    store.close();
+  });
+
+  test("PUT /api/actors 使用 Bearer 鉴权", async () => {
+    const store = new EventStore(":memory:");
+    const fetch = createTelemetryHandler(store, "secret");
+
+    const denied = await fetch(
+      new Request("http://local/api/actors/dev-2", {
+        method: "PUT",
+        body: JSON.stringify({ display_name: "Denied" }),
+      }),
+    );
+    expect(denied.status).toBe(401);
+
+    const ok = await fetch(
+      new Request("http://local/api/actors/dev-2", {
+        method: "PUT",
+        headers: { Authorization: "Bearer secret" },
+        body: JSON.stringify({ display_name: "Allowed" }),
+      }),
+    );
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ actor_id: "dev-2", display_name: "Allowed", role: "dev" });
+    store.close();
   });
 });

@@ -15,14 +15,6 @@ const PORT = Number(process.env.FPG_TELEMETRY_PORT ?? 10000);
 const DB_PATH = process.env.FPG_TELEMETRY_DB ?? "./data/events.db";
 const TOKEN = process.env.FPG_TELEMETRY_TOKEN ?? "";
 
-// 确保 DB 目录存在
-if (DB_PATH !== ":memory:") {
-  const dir = DB_PATH.split("/").slice(0, -1).join("/");
-  if (dir) await Bun.$`mkdir -p ${dir}`.quiet().nothrow();
-}
-
-const store = new EventStore(DB_PATH);
-
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -30,15 +22,22 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function authorized(req: Request): boolean {
-  if (!TOKEN) return true;
+function authorized(req: Request, token: string): boolean {
+  if (!token) return true;
   const h = req.headers.get("authorization") ?? "";
-  return h === `Bearer ${TOKEN}`;
+  return h === `Bearer ${token}`;
 }
 
-const server = Bun.serve({
-  port: PORT,
-  async fetch(req) {
+async function readJson(req: Request): Promise<unknown | null> {
+  try {
+    return await req.json();
+  } catch {
+    return null;
+  }
+}
+
+export function createTelemetryHandler(store: EventStore, token: string) {
+  return async function fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
 
     if (req.method === "GET" && url.pathname === "/health") {
@@ -59,8 +58,30 @@ const server = Bun.serve({
       });
     }
 
+    if (req.method === "GET" && url.pathname === "/api/actors") {
+      return json(store.listActors());
+    }
+
+    if (req.method === "PUT" && url.pathname.startsWith("/api/actors/")) {
+      if (!authorized(req, token)) return json({ error: "unauthorized" }, 401);
+      const actorId = decodeURIComponent(url.pathname.slice("/api/actors/".length));
+      const body = await readJson(req);
+      if (typeof body !== "object" || body === null) return json({ error: "invalid json" }, 400);
+      const patch = body as { display_name?: unknown; role?: unknown };
+      if (typeof patch.display_name === "string" && patch.display_name.trim() === "") {
+        return json({ error: "display_name empty" }, 400);
+      }
+      return json(
+        store.upsertActor({
+          actor_id: actorId,
+          display_name: typeof patch.display_name === "string" ? patch.display_name : undefined,
+          role: typeof patch.role === "string" ? patch.role : undefined,
+        }),
+      );
+    }
+
     if (req.method === "POST" && url.pathname === "/events") {
-      if (!authorized(req)) return json({ error: "unauthorized" }, 401);
+      if (!authorized(req, token)) return json({ error: "unauthorized" }, 401);
       let body: unknown;
       try {
         body = await req.json();
@@ -84,8 +105,22 @@ const server = Bun.serve({
     }
 
     return json({ error: "not found" }, 404);
-  },
-});
+  };
+}
 
-console.log(`[fpg-telemetry] collector listening on http://localhost:${server.port}`);
-console.log(`[fpg-telemetry] db=${DB_PATH} auth=${TOKEN ? "on" : "off"}`);
+// 确保 DB 目录存在
+if (import.meta.main) {
+  if (DB_PATH !== ":memory:") {
+    const dir = DB_PATH.split("/").slice(0, -1).join("/");
+    if (dir) await Bun.$`mkdir -p ${dir}`.quiet().nothrow();
+  }
+
+  const store = new EventStore(DB_PATH);
+  const server = Bun.serve({
+    port: PORT,
+    fetch: createTelemetryHandler(store, TOKEN),
+  });
+
+  console.log(`[fpg-telemetry] collector listening on http://localhost:${server.port}`);
+  console.log(`[fpg-telemetry] db=${DB_PATH} auth=${TOKEN ? "on" : "off"}`);
+}

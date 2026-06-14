@@ -41,6 +41,8 @@ PROJECT_DIR="$(pwd)"
 TELEMETRY_ENDPOINT=""
 ROLE="dev"
 ACTOR_ID="${USER:-anonymous}"
+ACTOR_NAME="Allen"
+USER_ARG=0
 DRY_RUN=0
 WIRE_HOOKS=0
 WIRE_ENV=0
@@ -55,7 +57,7 @@ while [ $# -gt 0 ]; do
     --project-dir) PROJECT_DIR="$2"; shift 2;;
     --telemetry-endpoint) TELEMETRY_ENDPOINT="$2"; shift 2;;
     --role) ROLE="$2"; shift 2;;
-    --user) ACTOR_ID="$2"; shift 2;;
+    --user) ACTOR_ID="$2"; USER_ARG=1; shift 2;;
     --wire-hooks) WIRE_HOOKS=1; shift;;
     --wire-env) WIRE_ENV=1; shift;;
     --uninstall) UNINSTALL=1; shift;;
@@ -70,6 +72,12 @@ run()  { if [ "$DRY_RUN" = "1" ]; then say "  [dry-run] $*"; else eval "$*"; fi;
 warn() { say "  ⚠️  $*"; }
 
 PROJECT_DIR="$(cd "$PROJECT_DIR" 2>/dev/null && pwd || echo "$PROJECT_DIR")"
+
+if [ "$UNINSTALL" != "1" ] && [ "$DRY_RUN" != "1" ] && [ "$USER_ARG" = "0" ] && [ -t 0 ]; then
+  printf '遥测显示名 [Allen]: '
+  read -r ACTOR_NAME || ACTOR_NAME="Allen"
+  ACTOR_NAME="${ACTOR_NAME:-Allen}"
+fi
 
 say "fullstack-project-generator 安装/分发器"
 say "  FPG_HOME    = $FPG_HOME"
@@ -197,6 +205,7 @@ write_env_file() {
 export FPG_HOME=\"$FPG_HOME\"
 export FPG_ACTOR_ROLE=\"$ROLE\"
 export FPG_ACTOR_ID=\"$ACTOR_ID\"
+export FPG_ACTOR_NAME=\"$ACTOR_NAME\"
 export FPG_TELEMETRY_ENDPOINT=\"$TELEMETRY_ENDPOINT\"
 # export FPG_TELEMETRY_TOKEN=\"\"          # 若收集器开启鉴权请填写
 # export FPG_TELEMETRY_DISABLED=1          # 关闭埋点
@@ -207,6 +216,21 @@ export FPG_TELEMETRY_ENDPOINT=\"$TELEMETRY_ENDPOINT\"
     printf '%s\n' "$content" > "$env_file"
   fi
   say "  请在 shell profile 加入：[ -f ~/.fpg-telemetry/env.sh ] && source ~/.fpg-telemetry/env.sh"
+}
+
+register_actor() {
+  [ -z "$TELEMETRY_ENDPOINT" ] && return 0
+  [ "$DRY_RUN" = "1" ] && {
+    say "  [dry-run] PUT $TELEMETRY_ENDPOINT/api/actors/$ACTOR_ID display_name=$ACTOR_NAME role=$ROLE"
+    return 0
+  }
+  command -v curl >/dev/null 2>&1 || return 0
+  local body
+  body="{\"display_name\":\"$(printf '%s' "$ACTOR_NAME" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')\",\"role\":\"$(printf '%s' "$ROLE" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')\"}"
+  curl -s -o /dev/null --max-time 2 \
+    -H 'Content-Type: application/json' \
+    -X PUT "$TELEMETRY_ENDPOINT/api/actors/$ACTOR_ID" \
+    -d "$body" >/dev/null 2>&1 || true
 }
 
 # —— 注入非交互 shell 环境（--wire-env）：让 Codex/Claude 命令 shell 也能 source 遥测 env，
@@ -293,6 +317,7 @@ deploy_common
 [ "$WIRE_HOOKS" = "1" ] && wire_hooks
 [ "$WIRE_ENV" = "1" ] && wire_zshenv
 write_env_file
+register_actor
 
 say ""
 say "▶ FPG_TOOL 注入提示（让遥测区分工具来源）："
