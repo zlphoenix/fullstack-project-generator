@@ -53,7 +53,7 @@ Epic + 2 Sprint（[治理规范 §10](../../../../project-template/references/it
 | ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 估计Token | 证据 |
 |---|---|---|---|---|---|---|---|
 | S001 | 计划侧入遥测与身份 | Must Deliver | — | 否 | 已完成 | 80k–150k | [design.md](design.md) |
-| S002 | 看板下钻·甘特·关注 | Must Deliver | S001 | 否 | 未开始 | 90k–175k | [design.md](design.md) |
+| S002 | 看板下钻·甘特·关注 | Must Deliver | S001 | 否 | 已完成 | 90k–175k | [design.md](design.md) |
 
 > Task 级清单在各 Sprint 的 `sprints/S00N-*/plan.md`（执行期由 `sprint-plan` 生成）；本文只记直接下级（Sprint）。S001 预拆：`schema/store + plan_sync` → `plan-sync.sh 客户端` → `身份 id/name + install 询问` → `Skill 接入自动同步`。S002 预拆：`/stats 契约` → `原生单页（甘特/下钻/开发者/视角）` → `关注 prefs 持久化`。实测 token/耗时一律来自遥测，**不在 plan.md 手填实际值**。
 
