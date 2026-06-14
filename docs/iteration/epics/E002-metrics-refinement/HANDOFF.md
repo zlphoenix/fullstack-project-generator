@@ -32,6 +32,18 @@ S002.T001 (/stats 契约)            ← 依赖 S001 全部
 4. 向后兼容：旧事件（schema 1、无 plan、无 actors 行）仍能入库、看板优雅降级。
 5. 不留 TODO 占位实现；不偏离契约——若发现契约有错，**先改 design.md 并在 PR 说明**，不要静默改行为。
 
+## 2.5 验证节奏（Task 自测 / Sprint 审核 —— 重要）
+
+两种验证分两个节奏，不要混：
+
+- **自动门禁**（`bun test` + `fpg-check`）：**每个 Task 完成就跑**，你自己负责，未全绿不得进下一个 Task。
+- **人工审核**（本文 §3 清单）：**按 Sprint 边界批量做**，不逐 Task 审——多数 Task（如 T001 schema/store）单独没有可观测行为，要等同 Sprint 的消费方就绪才看得见。依据治理规范 §8「验证集中、每 Sprint 末一次」。
+
+因此你的**停顿点**只有这些：
+1. **S001.T001 完成后**：贴一份「地基摘要」——`schema.ts` 新增类型 + `store.ts` 的 DDL/迁移，对照 [design §2/§4/§5](design.md) 标出你的实现与决定。停下等一次**轻量地基检查（只读、不跑完整 §3）**，通过再继续。理由：后续 3 个 Task 全压在这层 schema/DDL 上，地基歪了 Sprint 末才发现要连带返工。
+2. **每个 Sprint 全部 Task 完成后**：贴该 Sprint 的 DoD 证据（§4）+ 各 Task 变更摘要 + `bun test` 输出。停下等**完整审核**，通过再进下一个 Sprint。
+3. 其余相邻 Task 之间**不必停**，连续做（各自跑门禁即可）。
+
 ## 3. 我（审核方）会逐条对照检查
 
 - [ ] `plan_sync` 校验：缺 `root`/`nodes` 拒；坏 node 丢、好 node 留（design §2.2）。
@@ -59,3 +71,42 @@ S002.T001 (/stats 契约)            ← 依赖 S001 全部
 - Codex/Claude 用**非交互 shell 不读 `~/.zshrc`**：`plan-sync.sh` 不要依赖交互式环境变量；需要的 `FPG_*` 自 `~/.fpg-telemetry/env.sh` source（参照 `telemetry/hooks/tool_hook.sh`）。
 - `case */epics/E*/plan.md` 的 `*` 跨 `/` 匹配，**Sprint plan 也被当 Epic 级**校验 → Sprint plan 必须含「终止契约」「结构决策」（已写好）。
 - SQLite 用 `bun:sqlite`，迁移用 `CREATE TABLE IF NOT EXISTS` + `PRAGMA table_info` 补列，**不要** drop/rebuild `events`。
+
+## 6. Codex 启动提示词（在主仓库 master 上启动后粘贴）
+
+> 启动前：`cd /Users/allen/Work/skills/fullstack-project-generator`（master 分支）再起 Codex。
+
+```text
+你是本仓库的实现开发者,负责完成 Epic E002「统计细化」。文档为中文,你也用中文沟通。
+
+【环境自检 —— 先做,不对就停】
+1. 运行 pwd,必须等于: /Users/allen/Work/skills/fullstack-project-generator
+2. 运行 git branch --show-current,必须是: master
+   任一不符 → 立即停止并告诉用户"工作目录/分支不对",不要在别处改动。
+
+【先读,后写】
+3. 完整读 docs/iteration/epics/E002-metrics-refinement/HANDOFF.md(入口:执行顺序+铁律+验证节奏+审核清单)。
+4. 完整读同目录 design.md(唯一权威实现契约:类型/DDL/算法/字段名/默认值/错误码,照写)。
+5. 略读 plan.md 与 sprints/S001*/plan.md、sprints/S002*/plan.md(Task 拆分与验收)。
+
+【铁律】
+- 只用 TypeScript(Bun) + shell,零外部依赖,不写 Python,不引前端框架/构建链。
+- emit.sh / plan-sync.sh 永不阻断宿主(始终 exit 0)。
+- 每个 Task 完成后必须跑自动门禁:cd telemetry && bun test 全绿;并对改到的 plan.md 跑
+  bash project-template/bin/fpg-check.sh plan-lint <file> 无 STOP。不破坏现有用例。
+- 严格按 design.md;若发现契约有错,先改 design.md 并在提交说明里讲清,不要静默偏离。
+- 一个 Task 一次提交,提交信息以 "E002/S00x/T00y <名称>" 开头,提交到 master。
+- 实现 design.md §15 列出的对应单测,不留 TODO 占位。
+
+【执行顺序】
+S001.T001(schema+store) → 然后 S001.T002(plan-sync.sh) 与 S001.T003(身份) 可并行 →
+S001.T004(Skill 接入) → S002.T001(/stats 契约) → 然后 S002.T002(看板) 与 S002.T003(prefs) 可并行。
+
+【验证节奏 —— 只在这些点停下,其余连续做】
+- S001.T001 完成后:贴「地基摘要」(schema 新类型 + store DDL/迁移,对照 design §2/§4/§5),停下等地基检查,通过再继续。
+- 同一 Sprint 内其余 Task 连续做,各自跑 bun test + fpg-check 门禁,不必每个都停。
+- 每个 Sprint 全部完成后:贴该 Sprint 的 DoD 证据(HANDOFF §4)+ 各 Task 变更摘要 + bun test 输出,停下等完整审核,通过再进下一个 Sprint。
+
+【现在开始】
+从 S001.T001 起步,完成后按上面的节奏贴「地基摘要」并停下。
+```
