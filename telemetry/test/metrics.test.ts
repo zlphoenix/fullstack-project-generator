@@ -693,6 +693,92 @@ describe("plan-sync.sh", () => {
   });
 });
 
+describe("fpg-check status_consistency", () => {
+  test("父子状态矛盾输出 WARN 且不阻断", async () => {
+    const dir = await Bun.$`mktemp -d`.text();
+    const root = dir.trim();
+    const epicDir = join(root, "docs/iteration/epics/E777-demo");
+    const sprintDir = join(epicDir, "sprints/S001-demo");
+    await Bun.$`mkdir -p ${join(root, "docs/iteration")}`.quiet();
+    await Bun.$`mkdir -p ${sprintDir}`.quiet();
+    await Bun.write(join(root, "docs/iteration/plan.md"), `# 迭代 Epic 总计划
+
+## Epic 清单与指标
+
+| ID | 名称 | 目标 | 状态 | 证据 |
+|---|---|---|---|---|
+| E777 | Demo | demo | 未开始 | — |
+`);
+    await Bun.write(join(epicDir, "plan.md"), `# E777 Demo
+
+## 终止契约
+
+| 项 | 内容 |
+|---|---|
+| Definition-of-Done | demo |
+| Sprint 预算上限 | 1 |
+
+## 结构决策
+
+Epic + 1 Sprint。
+
+## Sprint 清单与指标
+
+| ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 估计Token | 证据 |
+|---|---|---|---|---|---|---|---|
+| S001 | active sprint | Must Deliver | — | 否 | 未开始 | 1k-2k | — |
+
+\`\`\`mermaid
+graph LR
+  S001
+\`\`\`
+`);
+    const planPath = join(sprintDir, "plan.md");
+    await Bun.write(planPath, `# S001 Demo
+
+## 终止契约
+
+| 项 | 内容 |
+|---|---|
+| Definition-of-Done | demo |
+| Sprint 预算上限 | 1 |
+
+## 结构决策
+
+单 Sprint。
+
+## Task 清单与指标
+
+| ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 估计Token | 证据 |
+|---|---|---|---|---|---|---|---|
+| T001 | done child | Must Deliver | — | 否 | 已完成 | 1k-2k | — |
+| T002 | active child | Must Deliver | — | 否 | 执行中 | 1k-2k | — |
+
+\`\`\`mermaid
+graph LR
+  T001 --> T002
+\`\`\`
+`);
+
+    const proc = Bun.spawn({
+      cmd: ["bash", join(REPO_DIR, "project-template/bin/fpg-check.sh"), "plan-lint", planPath],
+      cwd: REPO_DIR,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("WARN status_consistency");
+    expect(stdout).toContain("状态过期：父级应至少为执行中");
+  });
+});
+
 describe("server actors API", () => {
   test("GET/PUT /api/actors 往返，空 display_name 返回 400，事件 actor_id 不变", async () => {
     const store = new EventStore(":memory:");

@@ -20,6 +20,112 @@ stop() { printf 'STOP %s: %s\n' "$1" "$2"; STOP_N=$((STOP_N + 1)); RC=2; }
 STATUSES='未开始|执行中|阻塞|已实现|已验证|已完成|搁置'
 STATUSES_EN='Planned|In Progress|Blocked|Implemented|Verified|Done|Deferred'
 
+trim() {
+  printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+cell_value() {
+  [ -z "${2:-}" ] && { printf ''; return; }
+  printf '%s' "$1" | awk -F'|' -v idx="$2" '{gsub(/^[ \t]+|[ \t]+$/, "", $idx); print $idx}'
+}
+
+header_index() {
+  printf '%s' "$1" | awk -F'|' -v name="$2" '
+    {
+      for (i = 1; i <= NF; i++) {
+        v = $i
+        gsub(/^[ \t]+|[ \t]+$/, "", v)
+        if (v == name) { print i; exit }
+      }
+    }'
+}
+
+first_task_table_header() {
+  awk '/^\|/ && /ID/ && /名称/ { print; exit }' "$1"
+}
+
+first_task_table_rows() {
+  awk '
+    /^\|/ && /ID/ && /名称/ { seen=1; next }
+    seen == 1 && /^\|[[:space:]]*:?-{3,}/ { seen=2; next }
+    seen == 2 && /^\|/ { print; next }
+    seen == 2 && !/^\|/ { exit }
+  ' "$1"
+}
+
+status_is_started() {
+  case "$1" in
+    "执行中"|"已实现"|"已验证"|"已完成") return 0;;
+    *) return 1;;
+  esac
+}
+
+status_consistency_check() {
+  local f="$1" header idx_status row status child_started=0 child_count=0 child_done=0 parent_status=""
+  header="$(first_task_table_header "$f")"
+  [ -z "$header" ] && return
+  idx_status="$(header_index "$header" "状态")"
+  [ -z "$idx_status" ] && return
+  while IFS= read -r row; do
+    status="$(trim "$(cell_value "$row" "$idx_status")")"
+    [ -z "$status" ] && continue
+    child_count=$((child_count + 1))
+    [ "$status" = "已完成" ] && child_done=$((child_done + 1))
+    if status_is_started "$status"; then child_started=1; fi
+  done <<EOF
+$(first_task_table_rows "$f")
+EOF
+
+  parent_status="$(parent_status_for_plan "$f")"
+  if [ "$child_started" -eq 1 ] && [ "$parent_status" = "未开始" ]; then
+    warn status_consistency "状态过期：父级应至少为执行中"
+  fi
+  if [ "$child_count" -gt 0 ] && [ "$child_done" -eq "$child_count" ] && [ "$parent_status" != "已完成" ]; then
+    warn status_consistency "应收口父级状态"
+  fi
+}
+
+parent_status_for_plan() {
+  local f="$1" dir base parent_file parent_id top_file
+  dir="$(dirname "$f")"
+  base="$(basename "$dir")"
+  parent_id="$(printf '%s' "$base" | grep -Eo '^[EST][0-9]+' || true)"
+
+  case "$f" in
+    */epics/E*/sprints/S*/plan.md)
+      parent_file="$(cd "$dir/../.." 2>/dev/null && pwd -P)/plan.md"
+      parent_status_from_table "$parent_file" "$parent_id"
+      ;;
+    */epics/E*/plan.md)
+      top_file="$(cd "$dir/../.." 2>/dev/null && pwd -P)/plan.md"
+      parent_status_from_table "$top_file" "$parent_id"
+      ;;
+    *)
+      printf ''
+      ;;
+  esac
+}
+
+parent_status_from_table() {
+  local f="$1" id="$2" header idx_id idx_status row row_id
+  [ -f "$f" ] || { printf ''; return; }
+  header="$(first_task_table_header "$f")"
+  [ -z "$header" ] && { printf ''; return; }
+  idx_id="$(header_index "$header" "ID")"
+  idx_status="$(header_index "$header" "状态")"
+  [ -z "$idx_id" ] || [ -z "$idx_status" ] && { printf ''; return; }
+  while IFS= read -r row; do
+    row_id="$(trim "$(cell_value "$row" "$idx_id")")"
+    if [ "$row_id" = "$id" ]; then
+      trim "$(cell_value "$row" "$idx_status")"
+      return
+    fi
+  done <<EOF
+$(first_task_table_rows "$f")
+EOF
+  printf ''
+}
+
 # —— plan-lint <plan.md> ——————————————————————————————————————————
 plan_lint() {
   local f="$1"
@@ -79,6 +185,9 @@ plan_lint() {
   # 6) 同级 INDEX.md（单一真源）
   local dir; dir=$(dirname "$f")
   [ -f "$dir/INDEX.md" ] && warn index_md "存在同级 INDEX.md——违反单一真源，清单应只在 plan.md"
+
+  # 7) 状态一致性：纯 plan WARN，不阻断。
+  status_consistency_check "$f"
 }
 
 # —— 从 Epic plan 提取计划 Sprint 数与硬上限 ——

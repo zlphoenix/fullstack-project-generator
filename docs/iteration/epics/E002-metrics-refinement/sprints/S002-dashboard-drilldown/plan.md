@@ -26,7 +26,7 @@ S002 = 看板单一退出场景组。Task 数 4（含状态漂移/一致性验�
 | T001 | /stats 聚合契约：树+维度+甘特+偏差+关键路径+源链接+状态漂移 | Must Deliver | — | 否 | 已验证 | 35k–60k | `cd telemetry && bun test`；`bash project-template/bin/fpg-check.sh plan-lint docs/iteration/epics/E002-metrics-refinement/sprints/S002-dashboard-drilldown/plan.md` |
 | T002 | 看板单页（原生 JS）：总览/下钻/开发者/视角 + 漂移徽标 | Must Deliver | T001 | 是(与 T003) | 未开始 | 30k–60k | [design §11](../../design.md) |
 | T003 | 关注/视角 prefs：/api/prefs 路由 + 看板控件接线 | Must Verify | T001 | 是(与 T002) | 未开始 | 15k–35k | [design §5,11,13](../../design.md) |
-| T004 | 状态一致性闸门：fpg-check 父子状态矛盾检测（纯 plan、机械） | Must Verify | — | 是(与 T001/T002/T003) | 未开始 | 10k–20k | [design §6.2](../../design.md) |
+| T004 | 状态一致性闸门：fpg-check 父子状态矛盾检测（纯 plan、机械） | Must Verify | — | 是(与 T001/T002/T003) | 已验证 | 10k–20k | `cd telemetry && bun test`；`bash project-template/bin/fpg-check.sh plan-lint docs/iteration/epics/E002-metrics-refinement/sprints/S002-dashboard-drilldown/plan.md` |
 
 ### Task 细则（照做）
 
