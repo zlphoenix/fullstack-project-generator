@@ -1,8 +1,14 @@
 import { expect, test, describe } from "bun:test";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { computeMetrics } from "../src/metrics.ts";
 import { validateEvent } from "../src/schema.ts";
 import { EventStore } from "../src/store.ts";
 import type { TelemetryEvent } from "../src/schema.ts";
+
+const TEST_DIR = dirname(fileURLToPath(import.meta.url));
+const TELEMETRY_DIR = dirname(TEST_DIR);
+const REPO_DIR = dirname(TELEMETRY_DIR);
 
 function ev(partial: Partial<TelemetryEvent>): TelemetryEvent {
   return {
@@ -347,5 +353,62 @@ describe("EventStore", () => {
       role_view: "qa",
     });
     store.close();
+  });
+});
+
+describe("plan-sync.sh", () => {
+  test("--dry-run 对 fixture 输出符合 PlanSnapshot 契约", async () => {
+    const epicDir = join(TELEMETRY_DIR, "test/fixtures/E999-sample");
+    const proc = Bun.spawn({
+      cmd: ["bash", join(TELEMETRY_DIR, "plan-sync.sh"), "--epic-dir", epicDir, "--project", "fixture", "--dry-run"],
+      cwd: REPO_DIR,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+    const snapshot = JSON.parse(stdout) as { root: string; nodes: Record<string, unknown>[] };
+    expect(snapshot.root).toBe("E999");
+    expect(snapshot.nodes.length).toBe(6);
+
+    const epic = snapshot.nodes.find((node) => node.level === "E");
+    expect(epic?.id).toBe("E999");
+    expect(epic?.parent).toBeNull();
+    expect(epic?.estimate_tokens).toEqual([10000, 20000]);
+
+    const s1 = snapshot.nodes.find((node) => node.id === "S001" && node.level === "S");
+    expect(s1?.parent).toBe("E999");
+    expect(s1?.status).toBe("执行中");
+    expect(s1?.estimate_tokens).toEqual([2000, 4000]);
+    expect(s1?.estimate_hours).toBe(3);
+    expect(s1?.source).toMatchObject({
+      path: "telemetry/test/fixtures/E999-sample/sprints/S001-build/plan.md",
+      heading: "S001 Build Core",
+      line: 1,
+    });
+
+    const s2 = snapshot.nodes.find((node) => node.id === "S002" && node.level === "S");
+    expect(s2?.deps).toEqual(["S001"]);
+    expect(s2?.estimate_tokens).toEqual([500, 1000]);
+    expect(s2?.estimate_hours).toBe(1.5);
+
+    const t2 = snapshot.nodes.find((node) => node.id === "T002" && node.parent === "S001");
+    expect(t2?.deps).toEqual(["T001"]);
+    expect(t2?.estimate_tokens).toEqual([1000, 2000]);
+    expect(t2?.source).toMatchObject({
+      path: "telemetry/test/fixtures/E999-sample/sprints/S001-build/plan.md",
+      heading: "Task 清单与指标",
+    });
+
+    const smoke = snapshot.nodes.find((node) => node.id === "T001" && node.parent === "S002");
+    expect(smoke?.status).toBe("未开始");
+    expect(smoke?.estimate_tokens).toEqual([2000, 2000]);
+    expect(smoke?.estimate_hours).toBeNull();
   });
 });
