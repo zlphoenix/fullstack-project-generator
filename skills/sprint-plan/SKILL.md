@@ -67,7 +67,12 @@ description: |
 ## 4. 校验与收尾
 
 1. **机械校验**：对新建/更新的每级 plan.md 跑 `bash .fpg/bin/fpg-check.sh plan-lint <plan.md>`，输出非 OK 先修复。
-2. 列出本 Sprint 风险（第三方依赖、新技术点）。
-3. 更新 `PROGRESS.md`（当前 Sprint、目标、下一步=开发）；删除归因标记 `rm -f .fpg/current-task`。
-4. 提示：
+2. **计划同步遥测**：若 `FPG_HOME` 可用且存在当前 Epic 目录，执行：
+   ```bash
+   [ -n "$FPG_HOME" ] && bash "$FPG_HOME/telemetry/plan-sync.sh" --epic-dir docs/iteration/epics/E###-... --project <项目名kebab>
+   ```
+   该命令 best-effort、始终不阻断；失败不影响 Sprint plan 产物。
+3. 列出本 Sprint 风险（第三方依赖、新技术点）。
+4. 更新 `PROGRESS.md`（当前 Sprint、目标、下一步=开发）；删除归因标记 `rm -f .fpg/current-task`。
+5. 提示：
    > "Sprint 计划已保存至 docs/iteration/epics/E###-.../sprints/S###-.../plan.md。下一步请使用 **sprint-develop** 实现（一次 1 个上下文切片，可含同边界多个清单 Task）。"

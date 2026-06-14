@@ -170,5 +170,6 @@ bash .fpg/bin/fpg-check.sh budget <epic-dir>     # 预算：已用 Sprint 数 / 
 ```
 
 - `sprint-plan` 收尾必须对新建/更新的每级 plan.md 跑 `plan-lint`。
+- `sprint-plan` 收尾在 `plan-lint` 通过后 best-effort 调用 `$FPG_HOME/telemetry/plan-sync.sh --epic-dir <Epic目录> --project <项目名>`；计划变更通过重发 `plan_sync` 覆盖读侧快照。
 - `sprint-develop` 会话起步必须跑 `gate`（末行判定 STOP = 停，升级人类，见执行卡）。
 - 脚本输出 `OK` / `WARN` / `STOP` 三级 + 末行总判定。**退出码二元：0 = 无 STOP（含仅 WARN，可继续）；2 = 有 STOP（必须停止）**。`WARN` 是提示、不阻断、退出码仍为 0；`STOP` 不可被执行线程绕过。

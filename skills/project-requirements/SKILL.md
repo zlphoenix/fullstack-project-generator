@@ -65,5 +65,10 @@ description: |
    [ -n "$FPG_HOME" ] && bash "$FPG_HOME/telemetry/emit.sh" --event-type phase_complete \
      --project <项目名kebab> --phase requirements --skill project-requirements --outcome ok
    ```
-3. 提示：
+3. 若本次是在已有迭代结构中更新需求并能定位当前 Epic 目录，best-effort 同步计划侧快照：
+   ```bash
+   [ -n "$FPG_HOME" ] && bash "$FPG_HOME/telemetry/plan-sync.sh" --epic-dir docs/iteration/epics/E###-... --project <项目名kebab>
+   ```
+   新项目尚未创建 Epic 时跳过，后续由 `sprint-plan` 收尾同步。
+4. 提示：
    > "PRD 已生成至 docs/PRD.md。下一步请使用 **project-architecture** 设计架构与 API 契约。"
