@@ -260,7 +260,7 @@ interface ProjectStat extends Omit<NodeStat,"level"> { level: "P"; epics: NodeSt
 
 ## 14. install.sh 身份询问
 
-- 取默认 `ACTOR_ID=${USER}`（现已如此）。新增交互：`printf '遥测显示名 [Allen]: '; read NAME; NAME=${NAME:-Allen}`（`--user` / 非交互场景默认 Allen，不卡住）。
+- 取默认 `ACTOR_ID=${USER}`（现已如此）。新增交互：`printf '遥测显示名 [Allen]: '; read NAME; NAME=${NAME:-Allen}`。`--user` 只设不可变 id、`--name` 设可改显示名（二者解耦）；给了 `--name` 或非交互场景默认 Allen、不卡住。
 - 写 `~/.fpg-telemetry/env.sh`：`FPG_ACTOR_ID`（不变）+ 新增 `FPG_ACTOR_NAME`（仅记录）。
 - best-effort `curl -m 2 PUT $FPG_TELEMETRY_ENDPOINT/api/actors/$ACTOR_ID {display_name,role}`（失败静默——迁移默认 Allen 兜底，用户可后续在看板改名）。沿用 emit.sh 的「不可达不报错」。
 

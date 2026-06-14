@@ -12,9 +12,11 @@
 # 用法：
 #   bash scripts/install.sh --project-dir <项目路径> [--tools claude,codex]
 #        [--scope project|user] [--telemetry-endpoint URL] [--role dev|product|qa|ops|pm]
-#        [--user <id>] [--dry-run]
+#        [--user <id>] [--name <显示名>] [--dry-run]
 #
-#   --user <id>   遥测里标识"是谁"（默认取 $USER）；写入 ~/.fpg-telemetry/env.sh 的 FPG_ACTOR_ID。
+#   --user <id>   遥测里不可变的身份 id（默认取 $USER）；写入 ~/.fpg-telemetry/env.sh 的 FPG_ACTOR_ID。
+#   --name <名>   可改的显示名（默认 Allen）；写入 FPG_ACTOR_NAME 并注册到收集器 actors 表。
+#                 交互安装且未给 --name 时会询问；与 --user 互不影响（id 与 name 解耦）。
 #
 # 示例：
 #   bash scripts/install.sh --project-dir ~/work/my-app --tools claude,codex --dry-run
@@ -42,7 +44,7 @@ TELEMETRY_ENDPOINT=""
 ROLE="dev"
 ACTOR_ID="${USER:-anonymous}"
 ACTOR_NAME="Allen"
-USER_ARG=0
+NAME_ARG=0
 DRY_RUN=0
 WIRE_HOOKS=0
 WIRE_ENV=0
@@ -57,7 +59,8 @@ while [ $# -gt 0 ]; do
     --project-dir) PROJECT_DIR="$2"; shift 2;;
     --telemetry-endpoint) TELEMETRY_ENDPOINT="$2"; shift 2;;
     --role) ROLE="$2"; shift 2;;
-    --user) ACTOR_ID="$2"; USER_ARG=1; shift 2;;
+    --user) ACTOR_ID="$2"; shift 2;;
+    --name) ACTOR_NAME="$2"; NAME_ARG=1; shift 2;;
     --wire-hooks) WIRE_HOOKS=1; shift;;
     --wire-env) WIRE_ENV=1; shift;;
     --uninstall) UNINSTALL=1; shift;;
@@ -73,7 +76,7 @@ warn() { say "  ⚠️  $*"; }
 
 PROJECT_DIR="$(cd "$PROJECT_DIR" 2>/dev/null && pwd || echo "$PROJECT_DIR")"
 
-if [ "$UNINSTALL" != "1" ] && [ "$DRY_RUN" != "1" ] && [ "$USER_ARG" = "0" ] && [ -t 0 ]; then
+if [ "$UNINSTALL" != "1" ] && [ "$DRY_RUN" != "1" ] && [ "$NAME_ARG" = "0" ] && [ -t 0 ]; then
   printf '遥测显示名 [Allen]: '
   read -r ACTOR_NAME || ACTOR_NAME="Allen"
   ACTOR_NAME="${ACTOR_NAME:-Allen}"
