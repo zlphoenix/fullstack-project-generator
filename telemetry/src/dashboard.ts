@@ -53,6 +53,17 @@ function flattenStats(stats: Stats): NodeStat[] {
   return stats.projects.flatMap((project) => [project as NodeStat, ...flattenProject(project)]);
 }
 
+type GanttItem = {
+  projectId: string;
+  id: string;
+  name: string;
+  start: number | null;
+  end: number | null;
+  status4: NodeStat["gantt"]["status4"];
+  blocked: boolean;
+  critical: boolean;
+};
+
 function driftBadge(node: NodeStat | ProjectStat): string {
   if (!node.status_drift.drift) return "";
   return ` <span class="drift" title="${esc(node.status_drift.reason)}">⚠ 状态疑似过期</span>`;
@@ -66,47 +77,152 @@ function indent(level: NodeStat["level"]): string {
   return { P: "", E: "", S: "&nbsp;&nbsp;", T: "&nbsp;&nbsp;&nbsp;&nbsp;" }[level];
 }
 
-function nodeRows(stats: Stats): string[][] {
-  const rows: string[][] = [];
+function drillTable(stats: Stats): string {
+  const rows: string[] = [];
   for (const project of stats.projects) {
-    rows.push([
-      `<b>${esc(project.id)}</b>`,
-      esc(project.name),
-      `${esc(project.status || "—")}${driftBadge(project)}`,
-      "—",
-      `${fmtTokens(project.actual.tokens)} / ${fmtHours(project.actual.active_hours)}`,
-      "—",
-      sourceLink(project.source_url),
-    ]);
+    rows.push(`<tr data-project="${esc(project.id)}"><td><b>${esc(project.id)}</b></td><td>${esc(project.name)}</td><td>${esc(project.status || "—")}${driftBadge(project)}</td><td>—</td><td>${fmtTokens(project.actual.tokens)} / ${fmtHours(project.actual.active_hours)}</td><td>—</td><td>${sourceLink(project.source_url)}</td></tr>`);
     for (const node of flattenProject(project)) {
-      rows.push([
-        `${indent(node.level)}${esc(node.id)}`,
-        esc(node.name),
-        `${esc(node.status || "—")}${driftBadge(node)}`,
-        `${fmtTokens(Math.round((node.plan.estimate_tokens[0] + node.plan.estimate_tokens[1]) / 2))} / ${fmtHours(node.plan.estimate_hours)}`,
-        `${fmtTokens(node.actual.tokens)} / ${fmtHours(node.actual.active_hours)}`,
-        `${node.deviation.tokens === null ? "—" : fmtTokens(node.deviation.tokens)} / ${fmtHours(node.deviation.hours)}`,
-        sourceLink(node.source_url),
-      ]);
+      rows.push(`<tr data-project="${esc(project.id)}"><td>${indent(node.level)}${esc(node.id)}</td><td>${esc(node.name)}</td><td>${esc(node.status || "—")}${driftBadge(node)}</td><td>${fmtTokens(Math.round((node.plan.estimate_tokens[0] + node.plan.estimate_tokens[1]) / 2))} / ${fmtHours(node.plan.estimate_hours)}</td><td>${fmtTokens(node.actual.tokens)} / ${fmtHours(node.actual.active_hours)}</td><td>${node.deviation.tokens === null ? "—" : fmtTokens(node.deviation.tokens)} / ${fmtHours(node.deviation.hours)}</td><td>${sourceLink(node.source_url)}</td></tr>`);
     }
   }
-  return rows;
+  const headers = ["ID", "名称", "状态", "计划", "实际", "偏差", "来源"].map((h) => `<th>${esc(h)}</th>`).join("");
+  return rows.length === 0 ? `<p class="empty">（暂无数据）</p>` : `<table><thead><tr>${headers}</tr></thead><tbody>${rows.join("\n")}</tbody></table>`;
 }
 
-function ganttBars(stats: Stats): string {
-  const nodes = flattenStats(stats).filter((node) => node.gantt.start || node.gantt.end);
-  if (nodes.length === 0) return `<p class="empty">未排期；未声明依赖时隐藏关键路径行。</p>`;
-  const critical = nodes.some((node) => node.gantt.critical);
-  const bars = nodes
-    .map((node, index) => {
-      const width = Math.max(8, Math.min(100, 18 + node.actual.turns * 12));
-      const left = (index % 4) * 8;
-      const cls = `bar s-${node.gantt.status4}${node.gantt.blocked ? " blocked" : ""}${node.gantt.critical ? " critical" : ""}`;
-      return `<div class="gantt-row"><span>${esc(node.id)}</span><i class="${cls}" style="margin-left:${left}%;width:${width}%" title="${esc(node.name)}"></i></div>`;
-    })
-    .join("");
+function collectGanttItems(stats: Stats, watched: Set<string>): GanttItem[] {
+  const items: GanttItem[] = [];
+  for (const project of stats.projects) {
+    if (watched.size > 0 && !watched.has(project.id)) continue;
+    for (const epic of project.epics) {
+      items.push({
+        projectId: project.id,
+        id: epic.id,
+        name: epic.name,
+        start: toTime(epic.gantt.start),
+        end: toTime(epic.gantt.end),
+        status4: epic.gantt.status4,
+        blocked: epic.gantt.blocked,
+        critical: epic.gantt.critical || flattenProject({ ...project, epics: [epic], children: [epic] }).some((node) => node.gantt.critical),
+      });
+    }
+  }
+  return items;
+}
+
+function toTime(value: string | null): number | null {
+  if (!value) return null;
+  const n = Date.parse(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function startOfDay(ms: number): number {
+  const d = new Date(ms);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+function startOfWeek(ms: number): number {
+  const d = new Date(startOfDay(ms));
+  d.setDate(d.getDate() - d.getDay());
+  return d.getTime();
+}
+
+function scaleWindow(items: GanttItem[], scale: "hour" | "day" | "week"): { start: number; end: number } {
+  const dated = items.filter((item) => item.start !== null || item.end !== null);
+  if (dated.length === 0) {
+    const now = Date.now();
+    return { start: now, end: now + 48 * 3_600_000 };
+  }
+  const min = Math.min(...dated.map((item) => item.start ?? item.end!));
+  const max = Math.max(...dated.map((item) => item.end ?? item.start!));
+  if (scale === "hour") return { start: min - 3_600_000, end: min + 48 * 3_600_000 };
+  if (scale === "day") {
+    const start = startOfDay(min);
+    return { start, end: Math.max(start + 7 * 86_400_000, startOfDay(max) + 86_400_000) };
+  }
+  const start = startOfWeek(min);
+  return { start, end: Math.max(start + 4 * 7 * 86_400_000, startOfWeek(max) + 7 * 86_400_000) };
+}
+
+function ticks(start: number, end: number, scale: "hour" | "day" | "week"): string {
+  const span = end - start || 1;
+  const labels: string[] = [];
+  for (let i = 0; i <= 4; i++) {
+    const ms = start + (span * i) / 4;
+    const d = new Date(ms);
+    const label = scale === "hour"
+      ? `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:00`
+      : scale === "day"
+        ? `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+        : `${d.getFullYear()}W${String(Math.ceil((((d.getTime() - new Date(d.getFullYear(), 0, 1).getTime()) / 86_400_000) + 1) / 7)).padStart(2, "0")}`;
+    labels.push(`<span style="left:${i * 25}%">${label}</span>`);
+  }
+  return `<div class="gantt-axis">${labels.join("")}</div>`;
+}
+
+function barPosition(item: GanttItem, start: number, end: number): { left: number; width: number } | null {
+  if (item.start === null && item.end === null) return null;
+  const itemStart = item.start ?? item.end!;
+  const itemEnd = item.end ?? item.start!;
+  const span = end - start || 1;
+  const clippedStart = Math.max(start, itemStart);
+  const clippedEnd = Math.min(end, Math.max(itemEnd, itemStart + 3_600_000));
+  const left = Math.max(0, Math.min(100, ((clippedStart - start) / span) * 100));
+  const width = Math.max(1.5, Math.min(100 - left, ((clippedEnd - clippedStart) / span) * 100));
+  return { left: Math.round(left * 100) / 100, width: Math.round(width * 100) / 100 };
+}
+
+function assignLanes(items: GanttItem[]): GanttItem[][] {
+  const dated = items.filter((item) => item.start !== null || item.end !== null)
+    .sort((a, b) => (a.start ?? a.end!)- (b.start ?? b.end!) || a.id.localeCompare(b.id));
+  const lanes: GanttItem[][] = [];
+  const laneEnds: number[] = [];
+  for (const item of dated) {
+    const s = item.start ?? item.end!;
+    const e = item.end ?? item.start ?? s;
+    let lane = laneEnds.findIndex((end) => end <= s);
+    if (lane === -1) {
+      lane = lanes.length;
+      lanes.push([]);
+      laneEnds.push(-Infinity);
+    }
+    lanes[lane].push(item);
+    laneEnds[lane] = Math.max(laneEnds[lane], e);
+  }
+  return lanes;
+}
+
+function ganttBars(stats: Stats, scale: "hour" | "day" | "week" = "day"): string {
+  const watched = new Set(stats.viewer.watched_projects.length ? stats.viewer.watched_projects : stats.projects.map((project) => project.id));
+  const items = collectGanttItems(stats, watched);
+  const critical = flattenStats(stats).some((node) => node.gantt.critical);
+  const { start, end } = scaleWindow(items, scale);
+  const groups = new Map<string, GanttItem[]>();
+  for (const item of items) (groups.get(item.projectId) ?? groups.set(item.projectId, []).get(item.projectId)!).push(item);
+  const body = [...groups.entries()].map(([projectId, group]) => {
+    const lanes = assignLanes(group);
+    const laneHtml = lanes.map((lane, index) => {
+      const bars = lane.map((item) => {
+        const pos = barPosition(item, start, end);
+        if (!pos) return "";
+        const cls = `bar s-${item.status4}${item.blocked ? " blocked" : ""}${item.critical ? " critical" : ""}`;
+        return `<i class="${cls}" data-id="${esc(item.id)}" data-left="${pos.left}" data-width="${pos.width}" style="left:${pos.left}%;width:${pos.width}%" title="${esc(item.name)}">${esc(item.id)}</i>`;
+      }).join("");
+      return `<div class="gantt-lane"><span>泳道 ${index + 1}</span><div class="lane-track">${bars}</div></div>`;
+    }).join("");
+    const unplanned = group.filter((item) => item.start === null && item.end === null).map((item) => `<span class="unplanned">${esc(item.id)} 未排期</span>`).join("");
+    return `<section class="gantt-project" data-project="${esc(projectId)}"><h3>${esc(projectId)}</h3>${laneHtml || `<p class="empty">未排期</p>`}${unplanned}</section>`;
+  }).join("");
   const criticalLine = critical ? `<div class="critical-line">关键路径</div>` : `<div class="empty">未声明依赖</div>`;
-  return `${criticalLine}${bars}`;
+  return `${ticks(start, end, scale)}${criticalLine}${body || `<p class="empty">未排期；未声明依赖时隐藏关键路径行。</p>`}`;
+}
+
+function watchPanel(stats: Stats): string {
+  const watched = new Set(stats.viewer.watched_projects);
+  return `<div class="watch-panel" id="watch-panel"><b>关注项目</b>${stats.projects.map((project) => {
+    const checked = watched.size === 0 || watched.has(project.id) ? " checked" : "";
+    return `<label><input type="checkbox" name="watched-project" value="${esc(project.id)}"${checked}>${esc(project.id)}</label>`;
+  }).join("")}</div>`;
 }
 
 function kpis(stats: Stats): string {
@@ -132,7 +248,7 @@ export function renderStatsDashboard(stats: Stats): string {
 <title>FPG 统计看板</title>
 <style>
 :root{color-scheme:light;--line:#d8dee8;--muted:#5f6978;--bg:#f7f9fc;--ink:#172033;--blue:#2f6fed;--green:#21875b;--yellow:#b7791f;--red:#c73535}
-*{box-sizing:border-box}body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;color:var(--ink);background:#fff;font-size:14px;line-height:1.45}header{padding:20px 24px;border-bottom:1px solid var(--line);background:var(--bg)}main{padding:18px 24px;max-width:1320px;margin:0 auto}h1{font-size:22px;margin:0 0 8px}h2{font-size:17px;margin:28px 0 10px}.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.toolbar label{font-size:13px;color:var(--muted)}input,select,button{height:32px;border:1px solid var(--line);border-radius:6px;background:#fff;padding:0 10px}.kpis{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:10px;margin:16px 0}.kpi{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:#fff}.kpi b{display:block;font-size:20px}.kpi span{color:var(--muted);font-size:12px}.grid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}.panel{border:1px solid var(--line);border-radius:8px;padding:14px;background:#fff;min-width:0}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}th{background:var(--bg);font-weight:600}.empty{color:var(--muted);margin:8px 0}.drift{display:inline-block;border:1px solid #f0b429;background:#fff8e1;color:#7a5200;border-radius:999px;padding:1px 7px;font-size:12px;white-space:nowrap}.dims{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.gantt-controls{display:flex;gap:6px;margin-bottom:10px}.gantt-row{display:grid;grid-template-columns:74px 1fr;align-items:center;min-height:28px;border-bottom:1px solid #eef1f5}.gantt-row span{font-size:12px;color:var(--muted)}.bar{display:block;height:16px;border-radius:4px}.s-未开始{background:#d7dde7;border:1px dashed #8d98a8}.s-执行中{background:var(--blue)}.s-已挂起{background:repeating-linear-gradient(45deg,#f6d365,#f6d365 5px,#f2b84b 5px,#f2b84b 10px)}.s-已关闭{background:var(--green)}.blocked{box-shadow:inset -8px 0 0 var(--red)}.critical{outline:2px solid #111}.critical-line{font-size:12px;color:#111;margin:4px 0 8px}.legend{display:flex;flex-wrap:wrap;gap:10px;color:var(--muted);font-size:12px;margin-top:10px}.legend i{display:inline-block;width:18px;height:10px;border-radius:3px;margin-right:4px}.dev-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.dev{border:1px solid var(--line);border-radius:8px;padding:10px}.dev b{display:block}.dev span{color:var(--muted);font-size:12px}@media(max-width:900px){.grid,.dims{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}main,header{padding-left:14px;padding-right:14px}}
+*{box-sizing:border-box}body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;color:var(--ink);background:#fff;font-size:14px;line-height:1.45}header{padding:20px 24px;border-bottom:1px solid var(--line);background:var(--bg)}main{padding:18px 24px;max-width:1320px;margin:0 auto}h1{font-size:22px;margin:0 0 8px}h2{font-size:17px;margin:28px 0 10px}.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.toolbar label{font-size:13px;color:var(--muted)}input,select,button{height:32px;border:1px solid var(--line);border-radius:6px;background:#fff;padding:0 10px}.kpis{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:10px;margin:16px 0}.kpi{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:#fff}.kpi b{display:block;font-size:20px}.kpi span{color:var(--muted);font-size:12px}.grid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}.panel{border:1px solid var(--line);border-radius:8px;padding:14px;background:#fff;min-width:0}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}th{background:var(--bg);font-weight:600}.empty{color:var(--muted);margin:8px 0}.drift{display:inline-block;border:1px solid #f0b429;background:#fff8e1;color:#7a5200;border-radius:999px;padding:1px 7px;font-size:12px;white-space:nowrap}.dims{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.watch-panel{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:10px 0}.watch-panel label{display:inline-flex;align-items:center;gap:4px;color:var(--muted)}.watch-panel input{height:auto}.gantt-controls{display:flex;gap:6px;margin-bottom:10px}.gantt-axis{position:relative;height:24px;border-bottom:1px solid var(--line);margin:2px 0 8px}.gantt-axis span{position:absolute;transform:translateX(-50%);font-size:11px;color:var(--muted);white-space:nowrap}.gantt-project{margin:10px 0}.gantt-project h3{font-size:13px;margin:6px 0;color:var(--muted)}.gantt-lane{display:grid;grid-template-columns:74px 1fr;align-items:center;min-height:30px;border-bottom:1px solid #eef1f5}.gantt-lane span{font-size:12px;color:var(--muted)}.lane-track{position:relative;height:24px;background:linear-gradient(90deg,#eef1f5 1px,transparent 1px);background-size:25% 100%}.bar{position:absolute;top:4px;display:block;height:16px;border-radius:4px;padding:0 4px;overflow:hidden;white-space:nowrap;font-size:10px;color:#fff;line-height:16px}.s-未开始{background:#d7dde7;border:1px dashed #8d98a8;color:#3d4652}.s-执行中{background:var(--blue)}.s-已挂起{background:repeating-linear-gradient(45deg,#f6d365,#f6d365 5px,#f2b84b 5px,#f2b84b 10px);color:#4b3410}.s-已关闭{background:var(--green)}.blocked{box-shadow:inset -8px 0 0 var(--red)}.critical{outline:2px solid #111}.critical-line{font-size:12px;color:#111;margin:4px 0 8px}.legend{display:flex;flex-wrap:wrap;gap:10px;color:var(--muted);font-size:12px;margin-top:10px}.legend i{display:inline-block;width:18px;height:10px;border-radius:3px;margin-right:4px}.unplanned{display:inline-block;margin:6px 6px 0 0;border:1px dashed var(--line);border-radius:999px;padding:2px 8px;color:var(--muted);font-size:12px}.dev-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.dev{border:1px solid var(--line);border-radius:8px;padding:10px}.dev b{display:block}.dev span{color:var(--muted);font-size:12px}@media(max-width:900px){.grid,.dims{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}main,header{padding-left:14px;padding-right:14px}}
 </style></head><body>
 <header><h1>FPG 统计看板</h1><div class="toolbar">
 <label>查看者 <input id="actor" value="${actor}" aria-label="actor"></label>
@@ -140,20 +256,112 @@ export function renderStatsDashboard(stats: Stats): string {
 <button id="save-prefs">保存关注</button><small>生成时间 ${esc(stats.generated_at)} · ${esc(stats.viewer.display_name)}</small>
 </div></header>
 <main>
-<section id="overview">${kpis(stats)}</section>
-<section class="grid"><div class="panel" id="gantt"><h2>并行甘特</h2><div class="gantt-controls"><button data-scale="hour">时</button><button data-scale="day">天</button><button data-scale="week">周</button></div><div id="gantt-bars">${ganttBars(stats)}</div><div class="legend"><span><i class="s-未开始"></i>未开始</span><span><i class="s-执行中"></i>执行中</span><span><i class="s-已挂起"></i>已挂起</span><span><i class="s-已关闭"></i>已关闭</span><span>关键路径</span></div></div>
+<section id="overview">${kpis(stats)}${watchPanel(stats)}</section>
+<section class="grid"><div class="panel" id="gantt" data-scale="day"><h2>并行甘特</h2><div class="gantt-controls"><button data-scale="hour">时</button><button data-scale="day">天</button><button data-scale="week">周</button></div><div id="gantt-bars">${ganttBars(stats)}</div><div class="legend"><span><i class="s-未开始"></i>未开始</span><span><i class="s-执行中"></i>执行中</span><span><i class="s-已挂起"></i>已挂起</span><span><i class="s-已关闭"></i>已关闭</span><span>关键路径</span></div></div>
 <div class="panel"><h2>三维度</h2><div class="dims"><div id="dim-agent"><h3>Agent</h3>${table(["k", "token"], dimRows(stats.dims.agent))}</div><div id="dim-skill"><h3>Skill</h3>${table(["k", "token"], dimRows(stats.dims.skill))}</div><div id="dim-tool"><h3>Tool</h3>${table(["k", "token"], dimRows(stats.dims.tool))}</div></div></div></section>
-<section class="panel" id="v-drill"><h2>下钻</h2>${table(["ID", "名称", "状态", "计划", "实际", "偏差", "来源"], nodeRows(stats))}</section>
+<section class="panel" id="v-drill"><h2>下钻</h2>${drillTable(stats)}</section>
 <section class="panel" id="developers"><h2>开发者维度</h2><div class="dev-list">${stats.developers.map((dev) => `<div class="dev"><b>${esc(dev.display_name)}</b><span>${esc(dev.actor_id)} · ${fmtTokens(dev.tokens)} · ${fmtHours(dev.active_hours)} · ${dev.tasks_done} tasks</span></div>`).join("") || `<p class="empty">暂无开发者数据</p>`}</div></section>
 </main>
 <script>
 const stats = ${JSON.stringify(stats)};
 document.getElementById('role-view').value = stats.viewer.role_view;
-document.querySelectorAll('[data-scale]').forEach((btn) => btn.addEventListener('click', () => document.getElementById('gantt').dataset.scale = btn.dataset.scale));
+const toTime = (value) => value ? Date.parse(value) : null;
+const flattenProject = (project) => {
+  const out = [];
+  const walk = (node) => { out.push(node); (node.children || []).forEach(walk); };
+  (project.epics || []).forEach(walk);
+  return out;
+};
+const flattenStats = () => stats.projects.flatMap((project) => [{ ...project, projectId: project.id }, ...flattenProject(project).map((node) => ({ ...node, projectId: project.id }))]);
+const watchedProjects = () => Array.from(document.querySelectorAll('input[name="watched-project"]:checked')).map((item) => item.value);
+const visibleProjects = () => new Set(watchedProjects().length ? watchedProjects() : stats.projects.map((project) => project.id));
+const collectGanttItems = () => {
+  const watched = visibleProjects();
+  return stats.projects.flatMap((project) => watched.has(project.id) ? project.epics.map((epic) => ({
+    projectId: project.id, id: epic.id, name: epic.name,
+    start: toTime(epic.gantt.start), end: toTime(epic.gantt.end),
+    status4: epic.gantt.status4, blocked: epic.gantt.blocked,
+    critical: epic.gantt.critical || flattenProject({ ...project, epics: [epic] }).some((node) => node.gantt.critical),
+  })) : []);
+};
+const startOfDay = (ms) => { const d = new Date(ms); d.setHours(0,0,0,0); return d.getTime(); };
+const startOfWeek = (ms) => { const d = new Date(startOfDay(ms)); d.setDate(d.getDate() - d.getDay()); return d.getTime(); };
+const scaleWindow = (items, scale) => {
+  const dated = items.filter((item) => item.start !== null || item.end !== null);
+  if (!dated.length) { const now = Date.now(); return { start: now, end: now + 48 * 3600000 }; }
+  const min = Math.min(...dated.map((item) => item.start ?? item.end));
+  const max = Math.max(...dated.map((item) => item.end ?? item.start));
+  if (scale === 'hour') return { start: min - 3600000, end: min + 48 * 3600000 };
+  if (scale === 'day') { const start = startOfDay(min); return { start, end: Math.max(start + 7 * 86400000, startOfDay(max) + 86400000) }; }
+  const start = startOfWeek(min); return { start, end: Math.max(start + 4 * 7 * 86400000, startOfWeek(max) + 7 * 86400000) };
+};
+const ticks = (start, end, scale) => {
+  const span = end - start || 1;
+  return '<div class="gantt-axis">' + [0,1,2,3,4].map((i) => {
+    const d = new Date(start + span * i / 4);
+    const label = scale === 'hour' ? String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + ' ' + String(d.getHours()).padStart(2,'0') + ':00'
+      : scale === 'day' ? String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+      : d.getFullYear() + 'W' + String(Math.ceil(((((d.getTime() - new Date(d.getFullYear(),0,1).getTime()) / 86400000) + 1) / 7))).padStart(2,'0');
+    return '<span style="left:' + (i * 25) + '%">' + label + '</span>';
+  }).join('') + '</div>';
+};
+const barPosition = (item, start, end) => {
+  if (item.start === null && item.end === null) return null;
+  const itemStart = item.start ?? item.end;
+  const itemEnd = item.end ?? item.start;
+  const span = end - start || 1;
+  const clippedStart = Math.max(start, itemStart);
+  const clippedEnd = Math.min(end, Math.max(itemEnd, itemStart + 3600000));
+  const left = Math.max(0, Math.min(100, ((clippedStart - start) / span) * 100));
+  const width = Math.max(1.5, Math.min(100 - left, ((clippedEnd - clippedStart) / span) * 100));
+  return { left: Math.round(left * 100) / 100, width: Math.round(width * 100) / 100 };
+};
+const assignLanes = (items) => {
+  const dated = items.filter((item) => item.start !== null || item.end !== null).sort((a,b) => (a.start ?? a.end) - (b.start ?? b.end) || a.id.localeCompare(b.id));
+  const lanes = [], laneEnds = [];
+  dated.forEach((item) => {
+    const s = item.start ?? item.end, e = item.end ?? item.start ?? s;
+    let lane = laneEnds.findIndex((end) => end <= s);
+    if (lane === -1) { lane = lanes.length; lanes.push([]); laneEnds.push(-Infinity); }
+    lanes[lane].push(item); laneEnds[lane] = Math.max(laneEnds[lane], e);
+  });
+  return lanes;
+};
+const renderGantt = (scale = document.getElementById('gantt').dataset.scale || 'day') => {
+  const items = collectGanttItems();
+  const allNodes = flattenStats();
+  const hasCritical = allNodes.some((node) => node.gantt.critical);
+  const window = scaleWindow(items, scale);
+  const grouped = new Map();
+  items.forEach((item) => grouped.set(item.projectId, [...(grouped.get(item.projectId) || []), item]));
+  let html = ticks(window.start, window.end, scale) + (hasCritical ? '<div class="critical-line">关键路径</div>' : '<div class="empty">未声明依赖</div>');
+  grouped.forEach((group, projectId) => {
+    const lanes = assignLanes(group);
+    html += '<section class="gantt-project" data-project="' + projectId + '"><h3>' + projectId + '</h3>';
+    html += lanes.map((lane, index) => '<div class="gantt-lane"><span>泳道 ' + (index + 1) + '</span><div class="lane-track">' + lane.map((item) => {
+      const pos = barPosition(item, window.start, window.end);
+      if (!pos) return '';
+      const cls = 'bar s-' + item.status4 + (item.blocked ? ' blocked' : '') + (item.critical ? ' critical' : '');
+      return '<i class="' + cls + '" data-id="' + item.id + '" data-left="' + pos.left + '" data-width="' + pos.width + '" style="left:' + pos.left + '%;width:' + pos.width + '%" title="' + item.name.replaceAll('"', '&quot;') + '">' + item.id + '</i>';
+    }).join('') + '</div></div>').join('') || '<p class="empty">未排期</p>';
+    html += group.filter((item) => item.start === null && item.end === null).map((item) => '<span class="unplanned">' + item.id + ' 未排期</span>').join('');
+    html += '</section>';
+  });
+  document.getElementById('gantt').dataset.scale = scale;
+  document.getElementById('gantt-bars').innerHTML = html || '<p class="empty">未排期</p>';
+};
+const applyWatchFilter = () => {
+  const watched = visibleProjects();
+  document.querySelectorAll('[data-project]').forEach((el) => { el.hidden = watched.size > 0 && !watched.has(el.dataset.project); });
+  renderGantt();
+};
+document.querySelectorAll('[data-scale]').forEach((btn) => btn.addEventListener('click', () => renderGantt(btn.dataset.scale)));
+document.querySelectorAll('input[name="watched-project"]').forEach((box) => box.addEventListener('change', applyWatchFilter));
+applyWatchFilter();
 document.getElementById('save-prefs').addEventListener('click', async () => {
   const actor = document.getElementById('actor').value || stats.viewer.actor_id;
   const role_view = document.getElementById('role-view').value;
-  await fetch('/api/prefs?actor=' + encodeURIComponent(actor), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ watched_projects: stats.viewer.watched_projects, role_view }) });
+  await fetch('/api/prefs?actor=' + encodeURIComponent(actor), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ watched_projects: watchedProjects(), role_view }) });
 });
 </script>
 </body></html>`;

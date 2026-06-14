@@ -812,6 +812,19 @@ describe("dashboard", () => {
               gantt: { start: "2026-06-14T00:00:00Z", end: "2026-06-14T02:00:00Z", status4: "执行中", blocked: false, critical: true, deps: [] },
               children: [],
             },
+            {
+              level: "E",
+              id: "E002",
+              name: "Later Epic",
+              status: "执行中",
+              plan: { estimate_tokens: [1000, 2000], estimate_hours: 2 },
+              actual: { tokens: 400, active_hours: 0.4, sessions: 1, turns: 1 },
+              deviation: { tokens: -1100, hours: -1.6 },
+              source_url: null,
+              status_drift: { drift: false, reason: "" },
+              gantt: { start: "2026-06-15T00:00:00Z", end: "2026-06-15T02:00:00Z", status4: "执行中", blocked: false, critical: false, deps: [] },
+              children: [],
+            },
           ],
         },
       ],
@@ -832,6 +845,10 @@ describe("dashboard", () => {
     expect(html).toContain("关键路径");
     expect(html).toContain("⚠ 状态疑似过期");
     expect(html).toContain('title="有实测活动但状态仍未开始"');
+    expect(html).toContain('name="watched-project" value="p1" checked');
+    const lefts = [...html.matchAll(/data-id="E00[12]" data-left="([0-9.]+)"/g)].map((match) => match[1]);
+    expect(lefts.length).toBe(2);
+    expect(new Set(lefts).size).toBe(2);
   });
 });
 
