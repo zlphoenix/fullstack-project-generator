@@ -661,9 +661,13 @@ export function buildStats(events: TelemetryEvent[], options: BuildStatsOptions 
     const project = projects.get(projectId) ?? builtProjectNode(projectId);
     let epic = project.epics.find((item) => item.stat.id === epicId);
     if (!epic) {
-      const task = makeNode(projectId, null, "T", taskId, [], `${epicId}/${sprintId}/${taskId}`);
-      const sprint = makeNode(projectId, null, "S", sprintId, [task], `${epicId}/${sprintId}/-`);
-      epic = makeNode(projectId, null, "E", epicId, [sprint], `${epicId}/-/-`);
+      const tasks = sprintId !== "-" && taskId !== "-"
+        ? [makeNode(projectId, null, "T", taskId, [], `${epicId}/${sprintId}/${taskId}`)]
+        : [];
+      const sprints = sprintId !== "-"
+        ? [makeNode(projectId, null, "S", sprintId, tasks, `${epicId}/${sprintId}/-`)]
+        : [];
+      epic = makeNode(projectId, null, "E", epicId, sprints, `${epicId}/-/-`);
       project.epics.push(epic);
       projects.set(projectId, project);
     } else if (sprintId !== "-") {

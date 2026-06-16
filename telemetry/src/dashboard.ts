@@ -39,6 +39,10 @@ function dimRows(items: KV[]): string[][] {
   return items.map((item) => [esc(item.k === "无" ? "未调用 MCP" : item.k), fmtTokens(item.tokens)]);
 }
 
+function epicLabel(item: { id: string; name: string }): string {
+  return item.name ? `${item.id} ${item.name}` : item.id;
+}
+
 function flattenProject(project: ProjectStat): NodeStat[] {
   const out: NodeStat[] = [];
   const walk = (node: NodeStat) => {
@@ -73,27 +77,45 @@ function sourceLink(url: string | null): string {
   return url ? `<a href="${esc(url)}">原文↗</a>` : "—";
 }
 
-function indent(level: NodeStat["level"]): string {
-  return { P: "", E: "", S: "&nbsp;&nbsp;", T: "&nbsp;&nbsp;&nbsp;&nbsp;" }[level];
+function isCompleteNode(node: NodeStat): boolean {
+  return node.gantt.status4 === "已关闭" || node.status === "已完成" || node.status === "已验证";
+}
+
+function drillKey(projectId: string, path: string[]): string {
+  return [projectId, ...path].join("/");
+}
+
+function treeCell(node: NodeStat, key: string, hasChildren: boolean): string {
+  const toggle = hasChildren
+    ? `<button class="tree-toggle" type="button" aria-label="展开 ${esc(node.id)}" data-tree-toggle="${esc(key)}">▸</button>`
+    : `<span class="tree-spacer"></span>`;
+  return `<span class="tree-id">${toggle}<span>${esc(node.id)}</span></span>`;
 }
 
 function drillTable(stats: Stats): string {
   const rows: string[] = [];
   for (const project of stats.projects) {
-    rows.push(`<tr data-project="${esc(project.id)}"><td><b>${esc(project.id)}</b></td><td>${esc(project.name)}</td><td>${esc(project.status || "—")}${driftBadge(project)}</td><td>—</td><td>${fmtTokens(project.actual.tokens)} / ${fmtHours(project.actual.active_hours)}</td><td>—</td><td>${sourceLink(project.source_url)}</td></tr>`);
-    for (const node of flattenProject(project)) {
-      rows.push(`<tr data-project="${esc(project.id)}"><td>${indent(node.level)}${esc(node.id)}</td><td>${esc(node.name)}</td><td>${esc(node.status || "—")}${driftBadge(node)}</td><td>${fmtTokens(Math.round((node.plan.estimate_tokens[0] + node.plan.estimate_tokens[1]) / 2))} / ${fmtHours(node.plan.estimate_hours)}</td><td>${fmtTokens(node.actual.tokens)} / ${fmtHours(node.actual.active_hours)}</td><td>${node.deviation.tokens === null ? "—" : fmtTokens(node.deviation.tokens)} / ${fmtHours(node.deviation.hours)}</td><td>${sourceLink(node.source_url)}</td></tr>`);
-    }
+    const projectKey = drillKey(project.id, ["P"]);
+    rows.push(`<tr data-project="${esc(project.id)}" data-tree-row="1" data-node-key="${esc(projectKey)}" data-node-id="${esc(project.id)}" data-level="P" data-expanded="true"><td><b>${esc(project.id)}</b></td><td>${esc(project.name)}</td><td>${esc(project.status || "—")}${driftBadge(project)}</td><td>—</td><td>${fmtTokens(project.actual.tokens)} / ${fmtHours(project.actual.active_hours)}</td><td>—</td><td>${sourceLink(project.source_url)}</td></tr>`);
+    const walk = (node: NodeStat, parentKey: string, path: string[]) => {
+      const key = drillKey(project.id, path);
+      const complete = isCompleteNode(node);
+      const hidden = node.level !== "E" || complete ? " hidden" : "";
+      const expanded = "false";
+      rows.push(`<tr data-project="${esc(project.id)}" data-tree-row="1" data-node-key="${esc(key)}" data-node-id="${esc(node.id)}" data-parent-key="${esc(parentKey)}" data-level="${esc(node.level)}" data-complete="${complete ? "true" : "false"}" data-expanded="${expanded}"${hidden}><td>${treeCell(node, key, node.children.length > 0)}</td><td>${esc(node.name)}</td><td>${esc(node.status || "—")}${driftBadge(node)}</td><td>${fmtTokens(Math.round((node.plan.estimate_tokens[0] + node.plan.estimate_tokens[1]) / 2))} / ${fmtHours(node.plan.estimate_hours)}</td><td>${fmtTokens(node.actual.tokens)} / ${fmtHours(node.actual.active_hours)}</td><td>${node.deviation.tokens === null ? "—" : fmtTokens(node.deviation.tokens)} / ${fmtHours(node.deviation.hours)}</td><td>${sourceLink(node.source_url)}</td></tr>`);
+      node.children.forEach((child, index) => walk(child, key, [...path, child.level, child.id, String(index)]));
+    };
+    project.epics.forEach((epic, index) => walk(epic, projectKey, [epic.level, epic.id, String(index)]));
   }
   const headers = ["ID", "名称", "状态", "计划", "实际", "偏差", "来源"].map((h) => `<th>${esc(h)}</th>`).join("");
-  return rows.length === 0 ? `<p class="empty">（暂无数据）</p>` : `<table><thead><tr>${headers}</tr></thead><tbody>${rows.join("\n")}</tbody></table>`;
+  return rows.length === 0 ? `<p class="empty">（暂无数据）</p>` : `<div class="tree-toolbar"><label><input type="checkbox" id="show-completed">显示已完成</label></div><table class="treelist"><thead><tr>${headers}</tr></thead><tbody>${rows.join("\n")}</tbody></table>`;
 }
 
 function collectGanttItems(stats: Stats, watched: Set<string>): GanttItem[] {
   const items: GanttItem[] = [];
   for (const project of stats.projects) {
     if (watched.size > 0 && !watched.has(project.id)) continue;
-    for (const epic of project.epics) {
+    for (const epic of project.epics.filter((item) => /^E\d+/.test(item.id))) {
       items.push({
         projectId: project.id,
         id: epic.id,
@@ -208,7 +230,8 @@ function ganttBars(stats: Stats, scale: "hour" | "day" | "week" = "day"): string
         const cls = `bar s-${item.status4}${item.blocked ? " blocked" : ""}${item.critical ? " critical" : ""}`;
         return `<i class="${cls}" data-id="${esc(item.id)}" data-left="${pos.left}" data-width="${pos.width}" style="left:${pos.left}%;width:${pos.width}%" title="${esc(item.name)}">${esc(item.id)}</i>`;
       }).join("");
-      return `<div class="gantt-lane"><span>Epic 并行行 ${index + 1}</span><div class="lane-track">${bars}</div></div>`;
+      const label = lane.map((item) => esc(epicLabel(item))).join(" / ");
+      return `<div class="gantt-lane"><span title="${label}">${label}</span><div class="lane-track">${bars}</div></div>`;
     }).join("");
     const unplanned = group.filter((item) => item.start === null && item.end === null).map((item) => `<span class="unplanned">${esc(item.id)} 未排期</span>`).join("");
     return `<section class="gantt-project" data-project="${esc(projectId)}"><h3>${esc(projectId)}</h3>${laneHtml || `<p class="empty">未排期</p>`}${unplanned}</section>`;
@@ -248,7 +271,7 @@ export function renderStatsDashboard(stats: Stats): string {
 <title>FPG 统计看板</title>
 <style>
 :root{color-scheme:light;--line:#d8dee8;--muted:#5f6978;--bg:#f7f9fc;--ink:#172033;--blue:#2f6fed;--green:#21875b;--yellow:#b7791f;--red:#c73535}
-*{box-sizing:border-box}body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;color:var(--ink);background:#fff;font-size:14px;line-height:1.45}header{padding:20px 24px;border-bottom:1px solid var(--line);background:var(--bg)}main{padding:18px 24px;max-width:1320px;margin:0 auto}h1{font-size:22px;margin:0 0 8px}h2{font-size:17px;margin:28px 0 10px}.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.toolbar label{font-size:13px;color:var(--muted)}input,select,button{height:32px;border:1px solid var(--line);border-radius:6px;background:#fff;padding:0 10px}.kpis{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:10px;margin:16px 0}.kpi{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:#fff}.kpi b{display:block;font-size:20px}.kpi span{color:var(--muted);font-size:12px}.grid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}.panel{border:1px solid var(--line);border-radius:8px;padding:14px;background:#fff;min-width:0}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}th{background:var(--bg);font-weight:600}.empty{color:var(--muted);margin:8px 0}.drift{display:inline-block;border:1px solid #f0b429;background:#fff8e1;color:#7a5200;border-radius:999px;padding:1px 7px;font-size:12px;white-space:nowrap}.dims{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.watch-panel{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:10px 0}.watch-panel label{display:inline-flex;align-items:center;gap:4px;color:var(--muted)}.watch-panel input{height:auto}.gantt-controls{display:flex;gap:6px;margin-bottom:10px}.gantt-axis{position:relative;height:24px;border-bottom:1px solid var(--line);margin:2px 0 8px}.gantt-axis span{position:absolute;transform:translateX(-50%);font-size:11px;color:var(--muted);white-space:nowrap}.gantt-project{margin:10px 0}.gantt-project h3{font-size:13px;margin:6px 0;color:var(--muted)}.gantt-lane{display:grid;grid-template-columns:118px 1fr;align-items:center;min-height:30px;border-bottom:1px solid #eef1f5}.gantt-lane span{font-size:12px;color:var(--muted)}.lane-track{position:relative;height:24px;background:linear-gradient(90deg,#eef1f5 1px,transparent 1px);background-size:25% 100%}.bar{position:absolute;top:4px;display:block;height:16px;border-radius:4px;padding:0 4px;overflow:hidden;white-space:nowrap;font-size:10px;color:#fff;line-height:16px}.s-未开始{background:#d7dde7;border:1px dashed #8d98a8;color:#3d4652}.s-执行中{background:var(--blue)}.s-已挂起{background:repeating-linear-gradient(45deg,#f6d365,#f6d365 5px,#f2b84b 5px,#f2b84b 10px);color:#4b3410}.s-已关闭{background:var(--green)}.blocked{box-shadow:inset -8px 0 0 var(--red)}.critical{outline:2px solid #111}.critical-line{font-size:12px;color:#111;margin:4px 0 8px}.legend{display:flex;flex-wrap:wrap;gap:10px;color:var(--muted);font-size:12px;margin-top:10px}.legend i{display:inline-block;width:18px;height:10px;border-radius:3px;margin-right:4px}.unplanned{display:inline-block;margin:6px 6px 0 0;border:1px dashed var(--line);border-radius:999px;padding:2px 8px;color:var(--muted);font-size:12px}.dev-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.dev{border:1px solid var(--line);border-radius:8px;padding:10px}.dev b{display:block}.dev span{color:var(--muted);font-size:12px}@media(max-width:900px){.grid,.dims{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}main,header{padding-left:14px;padding-right:14px}}
+*{box-sizing:border-box}body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;color:var(--ink);background:#fff;font-size:14px;line-height:1.45}header{padding:20px 24px;border-bottom:1px solid var(--line);background:var(--bg)}main{padding:18px 24px;max-width:1320px;margin:0 auto}h1{font-size:22px;margin:0 0 8px}h2{font-size:17px;margin:28px 0 10px}.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.toolbar label{font-size:13px;color:var(--muted)}input,select,button{height:32px;border:1px solid var(--line);border-radius:6px;background:#fff;padding:0 10px}.kpis{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:10px;margin:16px 0}.kpi{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:#fff}.kpi b{display:block;font-size:20px}.kpi span{color:var(--muted);font-size:12px}.grid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}.panel{border:1px solid var(--line);border-radius:8px;padding:14px;background:#fff;min-width:0}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}th{background:var(--bg);font-weight:600}.empty{color:var(--muted);margin:8px 0}.drift{display:inline-block;border:1px solid #f0b429;background:#fff8e1;color:#7a5200;border-radius:999px;padding:1px 7px;font-size:12px;white-space:nowrap}.dims{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.watch-panel,.tree-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:10px 0}.watch-panel label,.tree-toolbar label{display:inline-flex;align-items:center;gap:4px;color:var(--muted)}.watch-panel input,.tree-toolbar input{height:auto}.treelist .tree-id{display:inline-flex;align-items:center;gap:4px}.treelist tr[data-level="S"] .tree-id{padding-left:18px}.treelist tr[data-level="T"] .tree-id{padding-left:36px}.tree-toggle,.tree-spacer{width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 20px}.tree-toggle{border:0;background:transparent;padding:0;color:var(--muted);cursor:pointer;font-size:13px}.tree-toggle:hover{color:var(--ink);background:#eef1f5}.gantt-controls{display:flex;gap:6px;margin-bottom:10px}.gantt-axis{position:relative;height:24px;border-bottom:1px solid var(--line);margin:2px 0 8px}.gantt-axis span{position:absolute;transform:translateX(-50%);font-size:11px;color:var(--muted);white-space:nowrap}.gantt-project{margin:10px 0}.gantt-project h3{font-size:13px;margin:6px 0;color:var(--muted)}.gantt-lane{display:grid;grid-template-columns:minmax(180px,24%) 1fr;align-items:center;min-height:30px;border-bottom:1px solid #eef1f5}.gantt-lane span{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:8px}.lane-track{position:relative;height:24px;background:linear-gradient(90deg,#eef1f5 1px,transparent 1px);background-size:25% 100%}.bar{position:absolute;top:4px;display:block;height:16px;border-radius:4px;padding:0 4px;overflow:hidden;white-space:nowrap;font-size:10px;color:#fff;line-height:16px}.s-未开始{background:#d7dde7;border:1px dashed #8d98a8;color:#3d4652}.s-执行中{background:var(--blue)}.s-已挂起{background:repeating-linear-gradient(45deg,#f6d365,#f6d365 5px,#f2b84b 5px,#f2b84b 10px);color:#4b3410}.s-已关闭{background:var(--green)}.blocked{box-shadow:inset -8px 0 0 var(--red)}.critical{outline:2px solid #111}.critical-line{font-size:12px;color:#111;margin:4px 0 8px}.legend{display:flex;flex-wrap:wrap;gap:10px;color:var(--muted);font-size:12px;margin-top:10px}.legend i{display:inline-block;width:18px;height:10px;border-radius:3px;margin-right:4px}.unplanned{display:inline-block;margin:6px 6px 0 0;border:1px dashed var(--line);border-radius:999px;padding:2px 8px;color:var(--muted);font-size:12px}.dev-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.dev{border:1px solid var(--line);border-radius:8px;padding:10px}.dev b{display:block}.dev span{color:var(--muted);font-size:12px}@media(max-width:900px){.grid,.dims{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}main,header{padding-left:14px;padding-right:14px}}
 </style></head><body>
 <header><h1>FPG 统计看板</h1><div class="toolbar">
 <label>查看者 <input id="actor" value="${actor}" aria-label="actor"></label>
@@ -259,7 +282,7 @@ export function renderStatsDashboard(stats: Stats): string {
 <section id="overview">${kpis(stats)}${watchPanel(stats)}</section>
 <section class="grid"><div class="panel" id="gantt" data-scale="day"><h2>并行甘特</h2><div class="gantt-controls"><button data-scale="hour">时</button><button data-scale="day">天</button><button data-scale="week">周</button></div><div id="gantt-bars">${ganttBars(stats)}</div><div class="legend"><span><i class="s-未开始"></i>未开始</span><span><i class="s-执行中"></i>执行中</span><span><i class="s-已挂起"></i>已挂起</span><span><i class="s-已关闭"></i>已关闭</span><span>关键路径</span></div></div>
 <div class="panel"><h2>三维度</h2><div class="dims"><div id="dim-agent"><h3>Agent</h3>${table(["k", "token"], dimRows(stats.dims.agent))}</div><div id="dim-skill"><h3>Skill</h3>${table(["k", "token"], dimRows(stats.dims.skill))}</div><div id="dim-tool"><h3>Tool</h3>${table(["k", "token"], dimRows(stats.dims.tool))}</div></div></div></section>
-<section class="panel" id="v-drill"><h2>下钻</h2>${drillTable(stats)}</section>
+<section class="panel" id="v-drill"><h2>迭代进展明细</h2>${drillTable(stats)}</section>
 <section class="panel" id="developers"><h2>开发者维度</h2><div class="dev-list">${stats.developers.map((dev) => `<div class="dev"><b>${esc(dev.display_name)}</b><span>${esc(dev.actor_id)} · ${fmtTokens(dev.tokens)} · ${fmtHours(dev.active_hours)} · ${dev.tasks_done} tasks</span></div>`).join("") || `<p class="empty">暂无开发者数据</p>`}</div></section>
 </main>
 <script>
@@ -277,13 +300,14 @@ const watchedProjects = () => Array.from(document.querySelectorAll('input[name="
 const visibleProjects = () => new Set(watchedProjects().length ? watchedProjects() : stats.projects.map((project) => project.id));
 const collectGanttItems = () => {
   const watched = visibleProjects();
-  return stats.projects.flatMap((project) => watched.has(project.id) ? project.epics.map((epic) => ({
+  return stats.projects.flatMap((project) => watched.has(project.id) ? project.epics.filter((epic) => /^E\\d+/.test(epic.id)).map((epic) => ({
     projectId: project.id, id: epic.id, name: epic.name,
     start: toTime(epic.gantt.start), end: toTime(epic.gantt.end),
     status4: epic.gantt.status4, blocked: epic.gantt.blocked,
     critical: epic.gantt.critical || flattenProject({ ...project, epics: [epic] }).some((node) => node.gantt.critical),
   })) : []);
 };
+const epicLabel = (item) => item.name ? item.id + ' ' + item.name : item.id;
 const startOfDay = (ms) => { const d = new Date(ms); d.setHours(0,0,0,0); return d.getTime(); };
 const startOfWeek = (ms) => { const d = new Date(startOfDay(ms)); d.setDate(d.getDate() - d.getDay()); return d.getTime(); };
 const scaleWindow = (items, scale) => {
@@ -338,23 +362,65 @@ const renderGantt = (scale = document.getElementById('gantt').dataset.scale || '
   grouped.forEach((group, projectId) => {
     const lanes = assignLanes(group);
     html += '<section class="gantt-project" data-project="' + projectId + '"><h3>' + projectId + '</h3>';
-    html += lanes.map((lane, index) => '<div class="gantt-lane"><span>Epic 并行行 ' + (index + 1) + '</span><div class="lane-track">' + lane.map((item) => {
+    html += lanes.map((lane) => {
+      const label = lane.map(epicLabel).join(' / ');
+      return '<div class="gantt-lane"><span title="' + label.replaceAll('"', '&quot;') + '">' + label + '</span><div class="lane-track">' + lane.map((item) => {
       const pos = barPosition(item, window.start, window.end);
       if (!pos) return '';
       const cls = 'bar s-' + item.status4 + (item.blocked ? ' blocked' : '') + (item.critical ? ' critical' : '');
       return '<i class="' + cls + '" data-id="' + item.id + '" data-left="' + pos.left + '" data-width="' + pos.width + '" style="left:' + pos.left + '%;width:' + pos.width + '%" title="' + item.name.replaceAll('"', '&quot;') + '">' + item.id + '</i>';
-    }).join('') + '</div></div>').join('') || '<p class="empty">未排期</p>';
+    }).join('') + '</div></div>';
+    }).join('') || '<p class="empty">未排期</p>';
     html += group.filter((item) => item.start === null && item.end === null).map((item) => '<span class="unplanned">' + item.id + ' 未排期</span>').join('');
     html += '</section>';
   });
   document.getElementById('gantt').dataset.scale = scale;
   document.getElementById('gantt-bars').innerHTML = html || '<p class="empty">未排期</p>';
 };
+const childRowsOf = (key) => Array.from(document.querySelectorAll('[data-parent-key="' + CSS.escape(key) + '"]'));
+const isNumberedEpic = (row) => row.dataset.level !== 'E' || /^E\\d+$/.test(row.dataset.nodeId || '');
+const applyDrillTree = () => {
+  const watched = visibleProjects();
+  const showCompleted = document.getElementById('show-completed')?.checked || false;
+  const rows = Array.from(document.querySelectorAll('[data-tree-row]'));
+  rows.forEach((row) => {
+    const projectVisible = watched.size === 0 || watched.has(row.dataset.project);
+    let visible = projectVisible;
+    if (visible && row.dataset.level !== 'P') {
+      const completeAllowed = showCompleted || row.dataset.complete !== 'true';
+      const parent = rows.find((item) => item.dataset.nodeKey === row.dataset.parentKey);
+      visible = completeAllowed && isNumberedEpic(row) && !!parent && !parent.hidden && parent.dataset.expanded === 'true';
+    }
+    row.hidden = !visible;
+    const toggle = row.querySelector('[data-tree-toggle]');
+    if (toggle) {
+      const expanded = row.dataset.expanded === 'true';
+      toggle.textContent = expanded ? '▾' : '▸';
+      toggle.setAttribute('aria-expanded', String(expanded));
+      toggle.setAttribute('aria-label', (expanded ? '折叠 ' : '展开 ') + (row.dataset.nodeId || ''));
+    }
+  });
+};
 const applyWatchFilter = () => {
   const watched = visibleProjects();
-  document.querySelectorAll('[data-project]').forEach((el) => { el.hidden = watched.size > 0 && !watched.has(el.dataset.project); });
+  document.querySelectorAll('[data-project]:not([data-tree-row])').forEach((el) => { el.hidden = watched.size > 0 && !watched.has(el.dataset.project); });
+  applyDrillTree();
   renderGantt();
 };
+document.querySelectorAll('[data-tree-toggle]').forEach((button) => button.addEventListener('click', () => {
+  const row = button.closest('[data-tree-row]');
+  if (!row) return;
+  row.dataset.expanded = row.dataset.expanded === 'true' ? 'false' : 'true';
+  if (row.dataset.expanded === 'false') {
+    const collapse = (parentKey) => childRowsOf(parentKey).forEach((child) => {
+      child.dataset.expanded = 'false';
+      collapse(child.dataset.nodeKey);
+    });
+    collapse(row.dataset.nodeKey);
+  }
+  applyDrillTree();
+}));
+document.getElementById('show-completed')?.addEventListener('change', applyDrillTree);
 document.querySelectorAll('[data-scale]').forEach((btn) => btn.addEventListener('click', () => renderGantt(btn.dataset.scale)));
 document.querySelectorAll('input[name="watched-project"]').forEach((box) => box.addEventListener('change', applyWatchFilter));
 applyWatchFilter();

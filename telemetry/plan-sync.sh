@@ -56,8 +56,20 @@ header_index() {
 }
 
 normalize_status() {
-  case "$(strip_md "$1")" in
+  local raw
+  raw="$(strip_md "$1")"
+  case "$raw" in
     "未开始"|"执行中"|"阻塞"|"已实现"|"已验证"|"已完成"|"搁置") strip_md "$1";;
+    "已收口") printf '已完成';;
+    "未开始（"*|"未开始("* ) printf '未开始';;
+    "执行中（"*|"执行中("* ) printf '执行中';;
+    "阻塞（"*|"阻塞("* ) printf '阻塞';;
+    "已实现（"*|"已实现("* ) printf '已实现';;
+    "已验证（"*|"已验证("* ) printf '已验证';;
+    "已完成（"*|"已完成("* ) printf '已完成';;
+    "已收口（"*|"已收口("* ) printf '已完成';;
+    "搁置（"*|"搁置("* ) printf '搁置';;
+    "未触发"| "未触发（"*|"未触发("* ) printf '搁置';;
     "Planned") printf '未开始';;
     "In Progress") printf '执行中';;
     "Blocked") printf '阻塞';;
@@ -149,6 +161,31 @@ project_root() {
   cd "$EPIC_DIR" 2>/dev/null && pwd -P
 }
 
+iteration_plan_file() {
+  local root dir
+  root="$(git -C "$EPIC_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [ -n "$root" ] && [ -f "$root/docs/iteration/plan.md" ]; then
+    printf '%s' "$root/docs/iteration/plan.md"
+    return
+  fi
+  dir="$(cd "$EPIC_DIR" 2>/dev/null && pwd -P)"
+  while [ -n "$dir" ] && [ "$dir" != "/" ]; do
+    if [ -f "$dir/docs/iteration/plan.md" ]; then
+      printf '%s' "$dir/docs/iteration/plan.md"
+      return
+    fi
+    if [ -f "$dir/iteration/plan.md" ]; then
+      printf '%s' "$dir/iteration/plan.md"
+      return
+    fi
+    if [ -f "$dir/plan.md" ] && [ "$(basename "$dir")" = "iteration" ]; then
+      printf '%s' "$dir/plan.md"
+      return
+    fi
+    dir="$(dirname "$dir")"
+  done
+}
+
 source_path() {
   local file="$1" root rel
   rel="$(git -C "$EPIC_DIR" ls-files --full-name -- "$file" 2>/dev/null || true)"
@@ -211,6 +248,17 @@ table_header_after_heading() {
     $0 ~ "^#{2,6}[[:space:]]+" heading "[[:space:]]*$" { seen=1; next }
     seen && /^\|/ { print; exit }
   ' "$1"
+}
+
+first_table_heading() {
+  local file="$1" heading
+  shift
+  for heading in "$@"; do
+    if [ -n "$(table_header_after_heading "$file" "$heading")" ]; then
+      printf '%s' "$heading"
+      return
+    fi
+  done
 }
 
 task_table_heading() {
@@ -305,7 +353,7 @@ sprint_plan_file() {
 epic_status() {
   local root top header idx_id idx_status line row id
   root="$1"
-  top="$(git -C "$EPIC_DIR" rev-parse --show-toplevel 2>/dev/null)/docs/iteration/plan.md"
+  top="$(iteration_plan_file)"
   [ -f "$top" ] || { printf '执行中'; return; }
   header="$(task_table_header "$top")"
   [ -z "$header" ] && { printf '执行中'; return; }
@@ -335,7 +383,8 @@ if [ -n "$EPIC_DIR" ] && [ -d "$EPIC_DIR" ] && [ -f "$EPIC_DIR/plan.md" ]; then
     E_NODE="$(node_json "E" "$ROOT" "" "$H1" "" "$(epic_status "$ROOT")" "[]" "$(estimate_tokens_json "$(grep 'Token 预算上限' "$EPIC_PLAN" | head -1)")" "null" "$(source_json "$EPIC_PLAN" "$H1" "${H1_LINE:-1}")")"
     NODES="$E_NODE"
 
-    append_child_nodes_from_table "$EPIC_PLAN" "$ROOT" "S" "Sprint 清单与指标" "$(table_header_after_heading "$EPIC_PLAN" "Sprint 清单与指标")" "$(table_rows_after_heading "$EPIC_PLAN" "Sprint 清单与指标")" "sprint-plan"
+    SPRINT_HEADING="$(first_table_heading "$EPIC_PLAN" "Sprint 清单与指标" "Sprint 清单")"
+    append_child_nodes_from_table "$EPIC_PLAN" "$ROOT" "S" "$SPRINT_HEADING" "$(table_header_after_heading "$EPIC_PLAN" "$SPRINT_HEADING")" "$(table_rows_after_heading "$EPIC_PLAN" "$SPRINT_HEADING")" "sprint-plan"
 
     for SP_FILE in "$EPIC_DIR"/sprints/S*/plan.md; do
       [ -f "$SP_FILE" ] || continue

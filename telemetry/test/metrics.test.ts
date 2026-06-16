@@ -608,6 +608,37 @@ describe("buildStats", () => {
     expect(sprint?.children[0].actual.tokens).toBe(321);
     expect(epic.actual.tokens).toBe(321);
   });
+
+  test("无计划归因同时展示 Epic/Sprint/Task 直接实测，不只汇总到父级", () => {
+    const stats = buildStats([
+      ev({
+        event_type: "turn_complete",
+        project_id: "p-direct",
+        ts: "2026-06-14T01:00:00.000Z",
+        attrs: { session_id: "s1", epic: "E006", usage: { turn_total_tokens: 100 } },
+      }),
+      ev({
+        event_type: "turn_complete",
+        project_id: "p-direct",
+        ts: "2026-06-14T01:10:00.000Z",
+        attrs: { session_id: "s1", epic: "E006", sprint: "S001", usage: { turn_total_tokens: 10 } },
+      }),
+      ev({
+        event_type: "turn_complete",
+        project_id: "p-direct",
+        ts: "2026-06-14T01:20:00.000Z",
+        attrs: { session_id: "s1", epic: "E006", sprint: "S001", task: "T001", usage: { turn_total_tokens: 1 } },
+      }),
+    ]);
+
+    const epic = stats.projects[0].epics.find((item) => item.id === "E006");
+    const sprint = epic?.children.find((item) => item.id === "S001");
+    const task = sprint?.children.find((item) => item.id === "T001");
+
+    expect(epic?.actual.tokens).toBe(111);
+    expect(sprint?.actual.tokens).toBe(11);
+    expect(task?.actual.tokens).toBe(1);
+  });
 });
 
 function node(level: "E" | "S" | "T", id: string, parent: string | null, name: string, status: string, deps: string[]) {
@@ -785,6 +816,115 @@ describe("plan-sync.sh", () => {
     expect(smoke?.estimate_tokens).toEqual([2000, 2000]);
     expect(smoke?.estimate_hours).toBeNull();
   });
+
+  test("--dry-run 支持 Epic 计划中的 Sprint 清单标题", async () => {
+    const dir = await Bun.$`mktemp -d`.text();
+    const epicDir = join(dir.trim(), "E888-real-heading");
+    const sprintDir = join(epicDir, "sprints/S001-build");
+    await Bun.$`mkdir -p ${sprintDir}`.quiet();
+    await Bun.write(join(epicDir, "plan.md"), `# E888 Real Heading
+
+## 终止契约
+
+| 项 | 内容 |
+|---|---|
+| Token 预算上限 | 3k-5k |
+
+## Sprint 清单
+
+| ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 估计Token | 证据 |
+|---|---|---|---|---|---|---|---|
+| S001 | Build usable report | Must Deliver | — | 否 | 执行中 | 1k-2k | [plan](sprints/S001-build/plan.md) |
+`);
+    await Bun.write(join(sprintDir, "plan.md"), `# S001 Build usable report
+
+## Task 清单与指标
+
+| ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 估计Token | 证据 |
+|---|---|---|---|---|---|---|---|
+| T001 | Wire plan data | Must Deliver | — | 否 | 未开始 | 1k | — |
+`);
+
+    const proc = Bun.spawn({
+      cmd: ["bash", join(TELEMETRY_DIR, "plan-sync.sh"), "--epic-dir", epicDir, "--project", "fixture", "--dry-run"],
+      cwd: REPO_DIR,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+    const snapshot = JSON.parse(stdout) as { root: string; nodes: Record<string, unknown>[] };
+    const sprint = snapshot.nodes.find((node) => node.level === "S" && node.id === "S001");
+
+    expect(snapshot.root).toBe("E888");
+    expect(sprint).toMatchObject({
+      parent: "E888",
+      name: "Build usable report",
+      status: "执行中",
+      estimate_tokens: [1000, 2000],
+    });
+  });
+
+  test("--dry-run 将顶层已收口同步为已完成", async () => {
+    const dir = await Bun.$`mktemp -d`.text();
+    const root = dir.trim();
+    const epicDir = join(root, "docs/iteration/epics/E777-closed");
+    await Bun.$`mkdir -p ${epicDir}`.quiet();
+    await Bun.write(join(root, "docs/iteration/plan.md"), `# Iteration Plan
+
+## Epic 清单
+
+| ID | 名称 | 目标 | 状态 | 估计Token | 证据 |
+|---|---|---|---|---|---|
+| E777 | Closed Epic | done | 已收口 | 1k-2k | [plan](epics/E777-closed/plan.md) |
+`);
+    await Bun.write(join(epicDir, "plan.md"), `# E777 Closed Epic
+
+## Sprint 清单
+
+| ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 估计Token | 证据 |
+|---|---|---|---|---|---|---|---|
+| S001 | Annotated Sprint | Must Verify | — | 否 | 已验证（T002） | 1k | — |
+`);
+    const sprintDir = join(epicDir, "sprints/S001-annotated");
+    await Bun.$`mkdir -p ${sprintDir}`.quiet();
+    await Bun.write(join(sprintDir, "plan.md"), `# S001 Annotated Sprint
+
+## Task 清单与指标
+
+| ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 估计Token | 证据 |
+|---|---|---|---|---|---|---|---|
+| T001 | Contingency not needed | Must Deliver | — | 否 | 未触发（无新增 blocker） | 1k | — |
+`);
+
+    const proc = Bun.spawn({
+      cmd: ["bash", join(TELEMETRY_DIR, "plan-sync.sh"), "--epic-dir", epicDir, "--project", "fixture", "--dry-run"],
+      cwd: REPO_DIR,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+    const snapshot = JSON.parse(stdout) as { nodes: Record<string, unknown>[] };
+    const epic = snapshot.nodes.find((node) => node.level === "E" && node.id === "E777");
+    const sprint = snapshot.nodes.find((node) => node.level === "S" && node.id === "S001");
+    const task = snapshot.nodes.find((node) => node.level === "T" && node.id === "T001");
+    expect(epic?.status).toBe("已完成");
+    expect(sprint?.status).toBe("已验证");
+    expect(task?.status).toBe("搁置");
+  });
 });
 
 describe("collector.sh", () => {
@@ -927,6 +1067,19 @@ describe("dashboard", () => {
           epics: [
             {
               level: "E",
+              id: "-",
+              name: "-",
+              status: "",
+              plan: { estimate_tokens: [0, 0], estimate_hours: null },
+              actual: { tokens: 10, active_hours: 0.1, sessions: 1, turns: 1 },
+              deviation: { tokens: null, hours: null },
+              source_url: null,
+              status_drift: { drift: true, reason: "有实测活动但状态仍未开始" },
+              gantt: { start: "2026-06-13T00:00:00Z", end: "2026-06-13T02:00:00Z", status4: "未开始", blocked: false, critical: false, deps: [] },
+              children: [],
+            },
+            {
+              level: "E",
               id: "E001",
               name: "Epic",
               status: "未开始",
@@ -936,6 +1089,60 @@ describe("dashboard", () => {
               source_url: "vscode://file//tmp/plan.md:1",
               status_drift: { drift: true, reason: "有实测活动但状态仍未开始" },
               gantt: { start: "2026-06-14T00:00:00Z", end: "2026-06-14T02:00:00Z", status4: "执行中", blocked: false, critical: true, deps: [] },
+              children: [
+                {
+                  level: "S",
+                  id: "S001",
+                  name: "Done Sprint",
+                  status: "已完成",
+                  plan: { estimate_tokens: [1000, 1000], estimate_hours: 1 },
+                  actual: { tokens: 1000, active_hours: 1, sessions: 1, turns: 1 },
+                  deviation: { tokens: 0, hours: 0 },
+                  source_url: null,
+                  status_drift: { drift: false, reason: "" },
+                  gantt: { start: null, end: null, status4: "已关闭", blocked: false, critical: false, deps: [] },
+                  children: [],
+                },
+                {
+                  level: "S",
+                  id: "S002",
+                  name: "Active Sprint",
+                  status: "执行中",
+                  plan: { estimate_tokens: [1000, 1000], estimate_hours: 1 },
+                  actual: { tokens: 200, active_hours: 0.2, sessions: 1, turns: 1 },
+                  deviation: { tokens: -800, hours: -0.8 },
+                  source_url: null,
+                  status_drift: { drift: false, reason: "" },
+                  gantt: { start: null, end: null, status4: "执行中", blocked: false, critical: false, deps: [] },
+                  children: [
+                    {
+                      level: "T",
+                      id: "T001",
+                      name: "Open Task",
+                      status: "未开始",
+                      plan: { estimate_tokens: [100, 100], estimate_hours: null },
+                      actual: { tokens: 0, active_hours: 0, sessions: 0, turns: 0 },
+                      deviation: { tokens: -100, hours: null },
+                      source_url: null,
+                      status_drift: { drift: false, reason: "" },
+                      gantt: { start: null, end: null, status4: "未开始", blocked: false, critical: false, deps: [] },
+                      children: [],
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              level: "E",
+              id: "E003",
+              name: "Done Epic",
+              status: "已完成",
+              plan: { estimate_tokens: [1000, 2000], estimate_hours: 2 },
+              actual: { tokens: 1500, active_hours: 2, sessions: 1, turns: 1 },
+              deviation: { tokens: 0, hours: 0 },
+              source_url: null,
+              status_drift: { drift: false, reason: "" },
+              gantt: { start: null, end: null, status4: "已关闭", blocked: false, critical: false, deps: [] },
               children: [],
             },
             {
@@ -965,6 +1172,8 @@ describe("dashboard", () => {
     const html = renderStatsDashboard(stats);
     expect(html).toContain('id="gantt"');
     expect(html).toContain('id="v-drill"');
+    expect(html).toContain("<h2>迭代进展明细</h2>");
+    expect(html).not.toContain("<h2>下钻</h2>");
     expect(html).toContain('id="dim-agent"');
     expect(html).toContain('id="dim-skill"');
     expect(html).toContain('id="dim-tool"');
@@ -972,6 +1181,19 @@ describe("dashboard", () => {
     expect(html).toContain("⚠ 状态疑似过期");
     expect(html).toContain('title="有实测活动但状态仍未开始"');
     expect(html).toContain('name="watched-project" value="p1" checked');
+    expect(html).toContain("E001 Epic");
+    expect(html).toContain("E002 Later Epic");
+    expect(html).toContain("/^E\\d+/");
+    expect(html).toContain('id="show-completed"');
+    expect(html).toContain('class="treelist"');
+    expect(html).toContain('data-level="E" data-complete="false" data-expanded="false"');
+    expect(html).toContain('data-level="S" data-complete="true" data-expanded="false" hidden');
+    expect(html).toContain('data-level="T" data-complete="false" data-expanded="false" hidden');
+    expect(html).toContain('data-tree-toggle=');
+    expect(html).toContain("applyDrillTree");
+    expect(html).not.toContain("Epic 并行行");
+    expect(html).not.toContain('data-id="-"');
+    expect(html).not.toContain('<span title="-">-</span>');
     const lefts = [...html.matchAll(/data-id="E00[12]" data-left="([0-9.]+)"/g)].map((match) => match[1]);
     expect(lefts.length).toBe(2);
     expect(new Set(lefts).size).toBe(2);
