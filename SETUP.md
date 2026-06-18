@@ -14,14 +14,16 @@
 ## 1. 安装（装进你的项目）
 
 ```bash
-# 预览（不做任何更改）
-bash scripts/install.sh --project-dir <你的项目> --tools claude,codex --dry-run
+# 推荐：一键初始化。Codex/Claude 可直接执行。
+# 自动推断 project-id/user/name，探测本机 collector(http://localhost:10000)，
+# 写入 hooks/env，并同步已有 docs/iteration/epics/E*/plan.md。
+bash scripts/install.sh --project-dir <你的项目> --init --dry-run
+bash scripts/install.sh --project-dir <你的项目> --init
 
-# 安装（推荐带 --wire-hooks：度量自动采集的关键，见 §3）
+# 团队 collector 不在本机时，只需要显式补 endpoint。
 bash scripts/install.sh --project-dir <你的项目> --tools claude,codex \
-  --role dev --user <你的标识> \
   --telemetry-endpoint http://<收集器主机>:10000 \
-  --wire-hooks --wire-env
+  --init
 ```
 
 安装器做了什么（全部幂等、同名不覆盖）：
@@ -35,6 +37,16 @@ bash scripts/install.sh --project-dir <你的项目> --tools claude,codex \
 | 遥测环境 | `~/.fpg-telemetry/env.sh`（`FPG_HOME`/`FPG_TELEMETRY_ENDPOINT`/`FPG_ACTOR_ROLE`/`FPG_ACTOR_ID`） |
 | `--wire-hooks` | 工具侧自动埋点：`<项目>/.codex/hooks.json` + `<项目>/.claude/settings.json` |
 | `--wire-env` | `~/.zshenv` 可逆标记块（让非交互 shell 也能读到遥测 env） |
+| `--sync-plans` / `--init` | 扫描并同步 `<项目>/docs/iteration/epics/E*/plan.md` 到看板 |
+
+推断规则：
+
+| 内容 | 默认推断 | 推断不合适时 |
+|---|---|---|
+| `project_id` | git 顶层目录名；无 git 时用项目目录名 | 加 `--project-id <稳定项目ID>` |
+| `actor_id` | `$USER`，无值时 `anonymous` | 加 `--user <你的稳定ID>` |
+| 显示名 | 非交互默认 `Allen`，交互安装会询问 | 加 `--name <显示名>` |
+| collector | 先探测 `http://localhost:10000/health`，否则使用 `FPG_TELEMETRY_ENDPOINT`，再否则默认 `http://localhost:10000` | 加 `--telemetry-endpoint <URL>` |
 
 卸载：`bash scripts/install.sh --project-dir <你的项目> --uninstall`（只删本工具写入的软链与标记块，保留可能含你改动的文件并提示清理方法）。
 
@@ -124,7 +136,13 @@ bun run report --db ./data/events.db --project my-app --format json
 
 ### 3.5 安装后自检（一次性）
 
-跑完第一个会话后：打开 `/report`，确认 ① 有 `turn_complete` 事件；② token 列非 0（若为 0 说明你机器上 Codex 会话日志格式与解析不匹配，见 [telemetry/hooks/README.md](telemetry/hooks/README.md) 修 `codex_usage.sh` 字段匹配即可）；③ 用 Skill 跑过切片后 E/S/T 归因表有数据。
+安装后立即检查：
+
+```bash
+curl http://localhost:10000/stats?project=<project_id>
+```
+
+能看到项目和 E/S/T 计划节点，说明 `plan_sync` 已经成功。跑完第一个会话后再打开 `/report`，确认 ① 有 `turn_complete` 事件；② token 列非 0（若为 0 说明 hook 没接上，或你机器上 Codex/Claude 会话日志格式与解析不匹配，见 [telemetry/hooks/README.md](telemetry/hooks/README.md)）；③ 用 Skill 跑过切片后 E/S/T 归因表有数据。
 
 ## 4. 常见问题
 

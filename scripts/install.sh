@@ -12,13 +12,17 @@
 # 用法：
 #   bash scripts/install.sh --project-dir <项目路径> [--tools claude,codex]
 #        [--scope project|user] [--telemetry-endpoint URL] [--role dev|product|qa|ops|pm]
-#        [--user <id>] [--name <显示名>] [--dry-run]
+#        [--user <id>] [--name <显示名>] [--project-id <id>] [--dry-run]
 #
 #   --user <id>   遥测里不可变的身份 id（默认取 $USER）；写入 ~/.fpg-telemetry/env.sh 的 FPG_ACTOR_ID。
 #   --name <名>   可改的显示名（默认 Allen）；写入 FPG_ACTOR_NAME 并注册到收集器 actors 表。
 #                 交互安装且未给 --name 时会询问；与 --user 互不影响（id 与 name 解耦）。
 #
 # 示例：
+#   # 推荐：Codex/Claude 可直接执行的一键初始化。自动推断 project-id、actor、可用本地 collector，
+#   # 接入 hooks/env，并同步已有 docs/iteration/epics/E*/plan.md。
+#   bash scripts/install.sh --project-dir ~/work/my-app --init
+#
 #   bash scripts/install.sh --project-dir ~/work/my-app --tools claude,codex --dry-run
 #   bash scripts/install.sh --project-dir ~/work/my-app --role dev \
 #        --telemetry-endpoint https://telemetry.example.com
@@ -28,6 +32,9 @@
 #                 已存在 hook 配置则跳过并告警（不覆盖）。
 #   --wire-env    向 ~/.zshenv 写入带标记的可逆块，让非交互 shell（Codex/Claude 命令 shell）
 #                 也能 source 遥测 env，从而 SKILL 级细粒度埋点（skill/阶段/Story）生效。
+#   --sync-plans  安装后扫描 <项目>/docs/iteration/epics/E*/plan.md 并上报 plan_sync。
+#   --project-id  遥测 project_id；缺省由 git 顶层目录名/项目目录名推断。
+#   --init        一键初始化：等价于 --wire-hooks --wire-env --sync-plans，并自动探测本地 collector。
 #   --uninstall   移除本工具写入的内容：~/.zshenv 标记块、指向本仓库的 skill 软链、.fpg/references
 #                 软链。保留可能含用户改动的文件（AGENTS.md/hook 配置/env），并提示如何彻底清除。
 
@@ -41,13 +48,17 @@ SCOPE="project"
 TOOLS="claude,codex"
 PROJECT_DIR="$(pwd)"
 TELEMETRY_ENDPOINT=""
+ENDPOINT_ARG=0
 ROLE="dev"
 ACTOR_ID="${USER:-anonymous}"
 ACTOR_NAME="Allen"
 NAME_ARG=0
+PROJECT_ID=""
 DRY_RUN=0
 WIRE_HOOKS=0
 WIRE_ENV=0
+SYNC_PLANS=0
+INIT_MODE=0
 UNINSTALL=0
 ZSHENV_BEGIN="# >>> fpg-telemetry >>>"
 ZSHENV_END="# <<< fpg-telemetry <<<"
@@ -57,12 +68,15 @@ while [ $# -gt 0 ]; do
     --scope) SCOPE="$2"; shift 2;;
     --tools) TOOLS="$2"; shift 2;;
     --project-dir) PROJECT_DIR="$2"; shift 2;;
-    --telemetry-endpoint) TELEMETRY_ENDPOINT="$2"; shift 2;;
+    --telemetry-endpoint) TELEMETRY_ENDPOINT="$2"; ENDPOINT_ARG=1; shift 2;;
     --role) ROLE="$2"; shift 2;;
     --user) ACTOR_ID="$2"; shift 2;;
     --name) ACTOR_NAME="$2"; NAME_ARG=1; shift 2;;
+    --project-id) PROJECT_ID="$2"; shift 2;;
     --wire-hooks) WIRE_HOOKS=1; shift;;
     --wire-env) WIRE_ENV=1; shift;;
+    --sync-plans) SYNC_PLANS=1; shift;;
+    --init) INIT_MODE=1; WIRE_HOOKS=1; WIRE_ENV=1; SYNC_PLANS=1; shift;;
     --uninstall) UNINSTALL=1; shift;;
     --dry-run) DRY_RUN=1; shift;;
     -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
@@ -76,6 +90,50 @@ warn() { say "  ⚠️  $*"; }
 
 PROJECT_DIR="$(cd "$PROJECT_DIR" 2>/dev/null && pwd || echo "$PROJECT_DIR")"
 
+sanitize_id() {
+  printf '%s' "$1" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//'
+}
+
+infer_project_id() {
+  local root name
+  root="$(git -C "$PROJECT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [ -n "$root" ]; then name="$(basename "$root")"; else name="$(basename "$PROJECT_DIR")"; fi
+  sanitize_id "$name"
+}
+
+endpoint_ok() {
+  local endpoint="$1"
+  command -v curl >/dev/null 2>&1 || return 1
+  curl -fsS --max-time 1 "$endpoint/health" >/dev/null 2>&1
+}
+
+probe_local_endpoint() {
+  local candidates endpoint
+  candidates="${FPG_INSTALL_PROBE_ENDPOINTS:-http://localhost:10000 http://127.0.0.1:10000}"
+  for endpoint in $candidates; do
+    if endpoint_ok "$endpoint"; then
+      printf '%s' "$endpoint"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if [ -z "$PROJECT_ID" ]; then
+  PROJECT_ID="$(infer_project_id)"
+fi
+[ -z "$PROJECT_ID" ] && PROJECT_ID="unknown"
+
+if [ "$INIT_MODE" = "1" ] && [ "$ENDPOINT_ARG" = "0" ]; then
+  if detected_endpoint="$(probe_local_endpoint)"; then
+    TELEMETRY_ENDPOINT="$detected_endpoint"
+  else
+    TELEMETRY_ENDPOINT="${FPG_TELEMETRY_ENDPOINT:-http://localhost:10000}"
+  fi
+fi
+
 if [ "$UNINSTALL" != "1" ] && [ "$DRY_RUN" != "1" ] && [ "$NAME_ARG" = "0" ] && [ -t 0 ]; then
   printf '遥测显示名 [Allen]: '
   read -r ACTOR_NAME || ACTOR_NAME="Allen"
@@ -84,7 +142,8 @@ fi
 
 say "fullstack-project-generator 安装/分发器"
 say "  FPG_HOME    = $FPG_HOME"
-say "  scope=$SCOPE  tools=$TOOLS  project-dir=$PROJECT_DIR  dry-run=$DRY_RUN"
+say "  scope=$SCOPE  tools=$TOOLS  project-dir=$PROJECT_DIR  project-id=$PROJECT_ID  dry-run=$DRY_RUN"
+say "  telemetry-endpoint=${TELEMETRY_ENDPOINT:-<empty>}"
 say ""
 
 command -v bun  >/dev/null 2>&1 || say "  ⚠️  未找到 bun（仅遥测后端需要；客户端 emit.sh 仅需 curl）"
@@ -236,11 +295,54 @@ register_actor() {
     -d "$body" >/dev/null 2>&1 || true
 }
 
+sync_existing_plans() {
+  say "▶ 同步已有迭代计划（plan_sync）"
+  if [ ! -d "$PROJECT_DIR/docs/iteration/epics" ]; then
+    warn "未找到 docs/iteration/epics，跳过计划同步"
+    return 0
+  fi
+  local found=0 epic_dir
+  for epic_dir in "$PROJECT_DIR"/docs/iteration/epics/E*/; do
+    [ -f "$epic_dir/plan.md" ] || continue
+    found=1
+    say "  plan-sync $(basename "${epic_dir%/}") -> project $PROJECT_ID"
+    if [ "$DRY_RUN" = "1" ]; then
+      say "  [dry-run] bash '$FPG_HOME/telemetry/plan-sync.sh' --epic-dir '$epic_dir' --project '$PROJECT_ID'"
+    else
+      FPG_TELEMETRY_ENDPOINT="$TELEMETRY_ENDPOINT" \
+        bash "$FPG_HOME/telemetry/plan-sync.sh" --epic-dir "$epic_dir" --project "$PROJECT_ID" >/dev/null 2>&1 || true
+    fi
+  done
+  [ "$found" = "1" ] || warn "未找到 E*/plan.md，跳过计划同步"
+}
+
+post_install_check() {
+  say ""
+  say "▶ 安装后检查"
+  if [ -n "$TELEMETRY_ENDPOINT" ]; then
+    if endpoint_ok "$TELEMETRY_ENDPOINT"; then
+      say "  ✓ collector 可达：$TELEMETRY_ENDPOINT/health"
+      say "  查看项目：GET $TELEMETRY_ENDPOINT/stats?project=$PROJECT_ID"
+      say "  看板：$TELEMETRY_ENDPOINT/report?project=$PROJECT_ID&actor=$ACTOR_ID"
+    else
+      warn "collector 暂不可达：$TELEMETRY_ENDPOINT；事件会先进入 ~/.fpg-telemetry/queue"
+    fi
+  else
+    warn "FPG_TELEMETRY_ENDPOINT 为空；仅安装 Skill，不会上报看板"
+  fi
+  if [ "$WIRE_HOOKS" != "1" ]; then
+    warn "未启用 --wire-hooks；不会自动采集 turn_complete/token"
+  fi
+  if [ "$WIRE_ENV" != "1" ]; then
+    warn "未启用 --wire-env；非交互 shell 中的 Skill 级 emit 可能拿不到 FPG_*"
+  fi
+}
+
 # —— 注入非交互 shell 环境（--wire-env）：让 Codex/Claude 命令 shell 也能 source 遥测 env，
 #    从而 SKILL 级细粒度埋点（skill/阶段/Story）生效。写入带标记的可逆块到 ~/.zshenv。——
 wire_zshenv() {
   local f="$HOME/.zshenv"
-  say "▶ 注入非交互 shell 环境到 $f（带标记，可用 --uninstall 干净移除）"
+  say "▶ 注入非交互 shell 环境到 ${f}（带标记，可用 --uninstall 干净移除）"
   if [ -f "$f" ] && grep -qF "$ZSHENV_BEGIN" "$f"; then
     say "  ✓ 已存在 fpg-telemetry 标记块，跳过（不重复写入）"
     return
@@ -252,7 +354,7 @@ wire_zshenv() {
 [ -f ~/.fpg-telemetry/env.sh ] && source ~/.fpg-telemetry/env.sh
 $ZSHENV_END"
   if [ "$DRY_RUN" = "1" ]; then
-    say "  [dry-run] 追加以下块到 $f："; printf '%s\n' "$block" | sed 's/^/    /'
+    say "  [dry-run] 追加以下块到 ${f}："; printf '%s\n' "$block" | sed 's/^/    /'
   else
     printf '\n%s\n' "$block" >> "$f"
     say "  已写入。"
@@ -321,11 +423,17 @@ deploy_common
 [ "$WIRE_ENV" = "1" ] && wire_zshenv
 write_env_file
 register_actor
+[ "$SYNC_PLANS" = "1" ] && sync_existing_plans
 
 say ""
-say "▶ FPG_TOOL 注入提示（让遥测区分工具来源）："
-say "  - Claude Code：在 .claude/settings.json 的 \"env\" 加 { \"FPG_TOOL\": \"claude\" }"
-say "  - Codex：在其 env 配置设 FPG_TOOL=\"codex\""
+if [ "$WIRE_HOOKS" = "1" ]; then
+  say "▶ FPG_TOOL 已由工具 hook 命令区分；已有 hook 配置被跳过时请按上方提示手动合并。"
+else
+  say "▶ FPG_TOOL 注入提示（让遥测区分工具来源）："
+  say "  - Claude Code：在 .claude/settings.json 的 \"env\" 加 { \"FPG_TOOL\": \"claude\" }"
+  say "  - Codex：在其 env 配置设 FPG_TOOL=\"codex\""
+fi
+post_install_check
 say ""
 if [ "$DRY_RUN" = "1" ]; then
   say "✅ dry-run 完成：以上为将执行的操作，未做更改。去掉 --dry-run 即真正安装。"

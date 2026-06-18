@@ -927,6 +927,84 @@ describe("plan-sync.sh", () => {
   });
 });
 
+describe("install.sh", () => {
+  test("--init dry-run 推断本地 collector 并计划同步已有 Epic", async () => {
+    const dir = await Bun.$`mktemp -d`.text();
+    const projectDir = dir.trim();
+    const expectedProjectId = projectDir.split("/").pop()?.toLowerCase() ?? "";
+    const epicDir = join(projectDir, "docs/iteration/epics/E123-bootstrap");
+    const sprintDir = join(epicDir, "sprints/S001-setup");
+    await Bun.$`mkdir -p ${sprintDir}`.quiet();
+    await Bun.write(join(projectDir, "docs/iteration/plan.md"), `# 迭代计划
+
+## Epic 清单
+
+| ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 证据 |
+|---|---|---|---|---|---|---|
+| E123 | Bootstrap | Must Deliver | 无 | 否 | 执行中 | [plan](epics/E123-bootstrap/plan.md) |
+`);
+    await Bun.write(join(epicDir, "plan.md"), `# E123 Bootstrap
+
+## 终止契约
+
+| 项 | 内容 |
+|---|---|
+| Token 预算上限 | 1k-2k |
+
+## 结构决策
+
+Epic + 1 Sprint。
+
+## Sprint 清单
+
+| ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 证据 |
+|---|---|---|---|---|---|---|
+| S001 | Setup | Must Deliver | 无 | 否 | 执行中 | [plan](sprints/S001-setup/plan.md) |
+`);
+    await Bun.write(join(sprintDir, "plan.md"), `# S001 Setup
+
+## Task 清单
+
+| ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 证据 |
+|---|---|---|---|---|---|---|
+| T001 | Wire telemetry | Must Deliver | 无 | 否 | 未开始 | — |
+`);
+
+    const proc = Bun.spawn({
+      cmd: [
+        "bash",
+        join(REPO_DIR, "scripts/install.sh"),
+        "--project-dir",
+        projectDir,
+        "--init",
+        "--dry-run",
+      ],
+      cwd: REPO_DIR,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: {
+        ...process.env,
+        HOME: projectDir,
+        FPG_INSTALL_PROBE_ENDPOINTS: "http://localhost:1",
+      },
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain(`project-id=${expectedProjectId}`);
+    expect(stdout).toContain("telemetry-endpoint=http://localhost:10000");
+    expect(stdout).toContain("接入工具自动埋点 hook");
+    expect(stdout).toContain("同步已有迭代计划");
+    expect(stdout).toContain(`plan-sync E123-bootstrap -> project ${expectedProjectId}`);
+    expect(stdout).toContain(`GET http://localhost:10000/stats?project=${expectedProjectId}`);
+  });
+});
+
 describe("collector.sh", () => {
   test("config 从 .env 风格文件读取默认启动配置且不打印 token", async () => {
     const dir = await Bun.$`mktemp -d`.text();
