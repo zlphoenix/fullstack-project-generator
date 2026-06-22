@@ -56,8 +56,17 @@ header_index() {
 }
 
 normalize_status() {
-  local raw
+  local raw prefix
   raw="$(strip_md "$1")"
+  prefix="$(printf '%s' "$raw" | grep -Eo '^(未开始|执行中|阻塞|已实现|已验证|已完成|已收口|搁置|未触发)' | head -1 || true)"
+  if [ -n "$prefix" ] && [ "$raw" != "$prefix" ]; then
+    case "$prefix" in
+      "已收口") printf '已完成';;
+      "未触发") printf '搁置';;
+      *) printf '%s' "$prefix";;
+    esac
+    return
+  fi
   case "$raw" in
     "未开始"|"执行中"|"阻塞"|"已实现"|"已验证"|"已完成"|"搁置") strip_md "$1";;
     "已收口") printf '已完成';;

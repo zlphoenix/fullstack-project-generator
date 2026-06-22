@@ -40,11 +40,54 @@ esac
 
 # —— E/S/T 归因标记（Skill 写入，hook 附带）——
 _clean() { printf '%s' "$1" | tr -d '\000-\037"\\' ; }
+_attr() { attrs_extra="$attrs_extra,\"$1\":\"$(_clean "$2")\""; }
+_is_epic_id() { printf '%s' "$1" | grep -Eq '^E[0-9][0-9][0-9]$'; }
+_is_sprint_id() { printf '%s' "$1" | grep -Eq '^S[0-9][0-9][0-9]$'; }
+_is_task_id() { printf '%s' "$1" | grep -Eq '^T[0-9][0-9][0-9]$'; }
+_table_has_id() { [ -f "$1" ] && grep -Eq "^[|][[:space:]]*$2[[:space:]]*[|]" "$1" 2>/dev/null; }
+
+_project_file() {
+  local rel="$1" abs real_project real_file
+  [ -n "$rel" ] || return 1
+  case "$rel" in
+    /*) abs="$rel";;
+    *) abs="$project_root/$rel";;
+  esac
+  [ -f "$abs" ] || return 1
+  real_project="$(cd "$project_root" 2>/dev/null && pwd -P)" || return 1
+  real_file="$(cd "$(dirname "$abs")" 2>/dev/null && pwd -P)/$(basename "$abs")" || return 1
+  case "$real_file" in
+    "$real_project"/*) printf '%s' "$real_file";;
+    *) return 1;;
+  esac
+}
+
+_find_epic_plan() {
+  local f
+  f="$(_project_file "$m_epic_path" 2>/dev/null || true)"
+  [ -n "$f" ] && { printf '%s' "$f"; return; }
+  for f in "$project_root"/docs/iteration/epics/"$m_epic"-*/plan.md; do
+    [ -f "$f" ] && { printf '%s' "$f"; return; }
+  done
+}
+
+_find_sprint_plan() {
+  local f
+  f="$(_project_file "$m_sprint_path" 2>/dev/null || true)"
+  [ -n "$f" ] && { printf '%s' "$f"; return; }
+  for f in "$project_root"/docs/iteration/epics/"$m_epic"-*/sprints/"$m_sprint"-*/plan.md; do
+    [ -f "$f" ] && { printf '%s' "$f"; return; }
+  done
+}
+
 attrs_extra=""
 m_skill="${FPG_SKILL:-}"; m_phase="turn"; m_milestone="${FPG_MILESTONE:-}"
+m_epic=""; m_sprint=""; m_task=""; m_story=""; m_platform=""
+m_epic_name=""; m_sprint_name=""; m_task_name=""
+m_epic_path=""; m_sprint_path=""; m_task_path=""
 marker="${cwd:-$PWD}/.fpg/current-task"
 project_root="$(cd "${cwd:-$PWD}" 2>/dev/null && pwd -P)"
-[ -n "$project_root" ] && attrs_extra="$attrs_extra,\"project_root\":\"$(_clean "$project_root")\""
+[ -n "$project_root" ] && _attr "project_root" "$project_root"
 if [ -f "$marker" ]; then
   while IFS='=' read -r k v; do
     [ -z "$k" ] && continue
@@ -53,9 +96,60 @@ if [ -f "$marker" ]; then
       skill)     m_skill="$v";;
       phase)     m_phase="$v";;
       milestone) m_milestone="$v";;
-      epic|sprint|task|story|platform|epic_name|sprint_name|task_name) attrs_extra="$attrs_extra,\"$k\":\"$v\"";;
+      epic)       m_epic="$v";;
+      sprint)     m_sprint="$v";;
+      task)       m_task="$v";;
+      story)      m_story="$v";;
+      platform)   m_platform="$v";;
+      epic_name)  m_epic_name="$v";;
+      sprint_name) m_sprint_name="$v";;
+      task_name)  m_task_name="$v";;
+      epic_path)  m_epic_path="$v";;
+      sprint_path) m_sprint_path="$v";;
+      task_path)  m_task_path="$v";;
     esac
   done < "$marker"
+
+  attribution_error=""
+  epic_plan=""; sprint_plan=""
+  if [ -n "$m_epic" ] && ! _is_epic_id "$m_epic"; then
+    attribution_error="epic must match E###: $m_epic"
+  elif [ -n "$m_sprint" ] && ! _is_sprint_id "$m_sprint"; then
+    attribution_error="sprint must match S###: $m_sprint"
+  elif [ -n "$m_task" ] && ! _is_task_id "$m_task"; then
+    attribution_error="task must match T###: $m_task"
+  elif [ -n "$m_epic" ]; then
+    epic_plan="$(_find_epic_plan 2>/dev/null || true)"
+    if [ -z "$epic_plan" ]; then
+      attribution_error="epic plan not found: $m_epic"
+    elif [ -n "$m_sprint" ]; then
+      sprint_plan="$(_find_sprint_plan 2>/dev/null || true)"
+      if [ -z "$sprint_plan" ]; then
+        attribution_error="sprint plan not found: $m_epic/$m_sprint"
+      elif ! _table_has_id "$epic_plan" "$m_sprint"; then
+        attribution_error="sprint not listed in epic plan: $m_sprint"
+      elif [ -n "$m_task" ] && ! _table_has_id "$sprint_plan" "$m_task"; then
+        attribution_error="task not listed in sprint plan: $m_task"
+      fi
+    fi
+  fi
+
+  if [ -n "$attribution_error" ]; then
+    _attr "attribution_error" "$attribution_error"
+    _attr "attribution_valid" "false"
+  else
+    [ -n "$m_epic" ] && _attr "epic" "$m_epic"
+    [ -n "$m_sprint" ] && _attr "sprint" "$m_sprint"
+    [ -n "$m_task" ] && _attr "task" "$m_task"
+    [ -n "$m_story" ] && _attr "story" "$m_story"
+    [ -n "$m_platform" ] && _attr "platform" "$m_platform"
+    [ -n "$m_epic_name" ] && _attr "epic_name" "$m_epic_name"
+    [ -n "$m_sprint_name" ] && _attr "sprint_name" "$m_sprint_name"
+    [ -n "$m_task_name" ] && _attr "task_name" "$m_task_name"
+    [ -n "$m_epic_path" ] && _attr "epic_path" "$m_epic_path"
+    [ -n "$m_sprint_path" ] && _attr "sprint_path" "$m_sprint_path"
+    [ -n "$m_task_path" ] && _attr "task_path" "$m_task_path"
+  fi
 fi
 
 # —— 真实 token 用量（仅 turn_complete 有意义）——

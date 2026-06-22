@@ -46,7 +46,7 @@ description: |
 - **Sprint 1（MVP）**：1–2 个核心 Must-Have（如：认证 + 1 个主要实体 CRUD）；后续先完成剩余 Must-Have，再 Should-Have。
 - 每条估小/中/大；过大的先拆分（粒度按"人可一次审查"）。
 - 标出 Must Deliver、Must Verify、Supporting、Backlog（治理规范 §6）；Must Deliver 必须是编码或可运行交付，排关键路径最前。
-- **粒度从粗**：每 Sprint Task 数 ≤ 4（含验证）；Task 默认是清单行不建目录；同一上下文边界的多个小步骤合成一个 Task，别按"契约/路由/desktop/cloud/gate"机械拆。
+- **粒度从粗**：每 Sprint Task 数 ≤ 4（含验证）；Task 默认是清单行不建目录；同一上下文边界的多个小步骤合成一个 Task，别按"契约/路由/desktop/cloud/gate"机械拆。Task ID 必须是一行一个精确 `T###`，不得生成 `T003-T004`、`T003/T004` 这类组合或范围 ID。
 - 规划/拆分开销不超过本 Sprint 预算的 10–15%；超限停止规划，进入 Must Deliver。
 
 ---
@@ -75,4 +75,4 @@ description: |
 3. 列出本 Sprint 风险（第三方依赖、新技术点）。
 4. 更新 `PROGRESS.md`（当前 Sprint、目标、下一步=开发）；删除归因标记 `rm -f .fpg/current-task`。
 5. 提示：
-   > "Sprint 计划已保存至 docs/iteration/epics/E###-.../sprints/S###-.../plan.md。下一步请使用 **sprint-develop** 实现（一次 1 个上下文切片，可含同边界多个清单 Task）。"
+> "Sprint 计划已保存至 docs/iteration/epics/E###-.../sprints/S###-.../plan.md。下一步请使用 **sprint-develop** 实现（一次 1 个上下文切片；同边界小任务先合并为一个 Task）。"

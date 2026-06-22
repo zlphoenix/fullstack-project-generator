@@ -5,11 +5,13 @@
 > **执行期**（`sprint-develop` 各切片）只加载 [`execution-card.md`](execution-card.md)（执行卡），不重读本文。
 > **机械强制**：本文的硬规则由 `.fpg/bin/fpg-check.sh` 校验（见 §11），不依赖执行线程逐条记忆。
 
-## 0. 度量原则（instrumentation，不自报）
+## 0. 度量与状态真源（instrumentation，不自报）
 
 - **测量值（token 用量、耗时）一律由工具 hook 自动采集**，模型不估、不报、不回填；查看走遥测看板（`telemetry` 的 `GET /report`）。
-- plan.md 只保留**计划与状态**：状态、证据链接、Epic/Sprint 级 Token 预算上限（熔断输入）。
-- 归因：Skill 在切片开始时写项目根 `.fpg/current-task`（k=v 每行：epic/sprint/task/story/platform/skill/phase），切片结束删除；hook 自动附带到遥测事件。
+- **过程状态以 telemetry / 看板为 canonical source**。plan 清单行是规划期可读索引与 telemetry 同步输入；叙述文档不得逐字复制 Task/Sprint 状态，需要引用时写“状态看 telemetry/看板”，不手抄状态台账。
+- 叙述文档职责边界：只承载**决策、范围、证据、冲突口径**，不承载会漂移的状态副本。`smoke-report.md` 写验证事实与证据，`worklog.md` 写过程事实，review/checklist 写审查结论；状态结论回到 telemetry。
+- plan.md 保留直接子级清单、证据链接、Epic/Sprint 级 Token 预算上限（熔断输入），并通过 `plan-sync` 覆盖读侧快照。
+- 归因：Skill 在切片开始时写项目根 `.fpg/current-task`（k=v 每行：epic/sprint/task/story/platform/skill/phase），切片结束删除；hook 自动附带到遥测事件。`epic/sprint/task` 必须是计划树里已存在的精确 `E###/S###/T###`，不得写组合 ID、范围、别名或未列入计划的编号；非法标记不提交 E/S/T 归因，只保留回合事件和 `attribution_error`。
 
 ## 1. 层级与编号
 
@@ -41,12 +43,12 @@ docs/iteration/
 
 ## 3. 单一真源
 
-每一级只维护一份 `plan.md` = 该级的计划、直接子项清单、状态真源。
+每一级只维护一份 `plan.md` = 该级的计划与直接子项清单；过程状态的当前读数以 telemetry/看板为准。
 
 - 不新增同级 `INDEX.md`；父级只记录直接子级汇总，不复制孙级明细。
 - `worklog.md` 只记过程，`smoke-report.md` 只记验证证据，每 Sprint 各一份（按 Task 分节）。
 - 总账文件只能由协调线程更新；子线程只写自己的 Task 目录，除非被明确授权。
-- 任何状态变化只写该层级唯一 `plan.md` 的对应直接下级行；下级结束时同步更新父级对应行。
+- 计划清单状态变化只写该层级唯一 `plan.md` 的对应直接下级行，并立即 `plan-sync` 同步 telemetry；下级结束时同步更新父级对应行。叙述文档不复制这些状态。
 
 ## 4. plan.md 必备区块
 
@@ -91,6 +93,7 @@ docs/iteration/
 | Backlog | 不明确、低优先级 | 不进当前 Sprint |
 
 - **每 Sprint Task 数 ≤ 4（含验证）**；超出 = Sprint 过大或拆得过细，合并同上下文边界的 Task 或拆成两个 Sprint。固定的"每 Task 脚手架 + 上下文重载"开销不随 Task 变小而缩小。
+- 任务 ID 永远是一行一个精确 `T###`。如果执行时发现 `T003` 与 `T004` 实际是同一上下文闭环，先修改 Sprint `plan.md` 合并为一个 Task，再执行；不得用 `T003-T004`、`T003/T004` 或“当前切片含多个 Task”的标记绕过计划树。
 - Task 默认是清单行不建目录；仅"独立上下文边界 + 产出需留存的独立证据"同时满足才建 `tasks/T###/`。
 - 预计 < 1 小时的 smoke/schema/report/check 不立 Task，作为 Must Deliver/Must Verify 的验收步骤记入 `smoke-report.md`。
 - 共同服务同一验证目标的 schema/runner/scenario/diff 合并为一个"最小闭环"Task；闭环后再拆增强项。
@@ -114,6 +117,15 @@ docs/iteration/
 - prompt/agent 行为类任务必须有真实场景证据或可复用 golden case 链接；evidence 必须脱敏。
 - golden case 发现 unit test 未覆盖的问题 → 补测试或记录缺口。
 - 独立验收线程只做验证和质疑，不复用生成者结论（生成者 ≠ 评估者）。
+
+## 8.1 竣工勾稽（叙述一致性闸）
+
+telemetry 只建模 Task/Sprint 状态、token、耗时，不建模 prose 里的范围裁定、审批/冲突口径、旧 API/字段名等语义声明。因此每个切片收尾必须做一次低成本横向勾稽：
+
+1. 对本 Epic 的 `plan.md`、`smoke-report.md`、`checklist*.md`、`*review*.md`、`worklog.md` 全量 grep 本切片涉及的状态词和关键词：`待审批|推迟|未实现|未接生产|blocked|TODO|旧API名|旧字段名`，再加本次 Task、冲突项、API/字段名、模块名。
+2. 被本次代码、测试、审批、设计裁定证伪的旧表述必须**覆盖改正**；禁止只追加“最新状态”而保留矛盾旧口径。
+3. 收尾记录要列出 grep 结果与逐条处置。非本切片的 `blocked-external` / 待审批项只 WARN，不阻断；命中本切片时必须处置后再收尾。
+4. 可用 `bash .fpg/bin/fpg-check.sh narrative-consistency <epic-dir> --term <关键词> --slice <T###或关键词>` 做机械预检；脚本只覆盖已知矛盾模式，不能替代人工逐条勾稽。
 
 ## 9. Epic 终止契约与执行止损闸门
 
@@ -167,9 +179,12 @@ docs/iteration/
 bash .fpg/bin/fpg-check.sh plan-lint <plan.md>   # 结构：必备区块、清单列、状态枚举、终止契约/结构决策存在性
 bash .fpg/bin/fpg-check.sh gate <epic-dir>       # 止损：Sprint 数 vs 硬上限、blocked-external 待升级项
 bash .fpg/bin/fpg-check.sh budget <epic-dir>     # 预算：已用 Sprint 数 / 上限（token 消耗看遥测看板）
+bash .fpg/bin/fpg-check.sh narrative-consistency <epic-dir> [--term <词>] [--slice <词>]
+                                                   # 叙述一致性：状态词 grep + 已知矛盾 WARN/STOP
 ```
 
 - `sprint-plan` 收尾必须对新建/更新的每级 plan.md 跑 `plan-lint`。
+- `plan-lint` 会硬阻断组合/范围 ID 和 Sprint Task 数 > 4；触发时必须 re-baseline：合并同上下文边界任务、砍范围，或拆成独立 Sprint。
 - `sprint-plan` 收尾在 `plan-lint` 通过后 best-effort 调用 `$FPG_HOME/telemetry/plan-sync.sh --epic-dir <Epic目录> --project <项目名>`；计划变更通过重发 `plan_sync` 覆盖读侧快照。
-- `sprint-develop` 会话起步必须跑 `gate`（末行判定 STOP = 停，升级人类，见执行卡）。
+- `sprint-develop` 会话起步必须跑 `gate`（末行判定 STOP = 停，升级人类，见执行卡）；切片收尾必须跑叙述勾稽，建议用 `narrative-consistency` 辅助发现已知矛盾。
 - 脚本输出 `OK` / `WARN` / `STOP` 三级 + 末行总判定。**退出码二元：0 = 无 STOP（含仅 WARN，可继续）；2 = 有 STOP（必须停止）**。`WARN` 是提示、不阻断、退出码仍为 0；`STOP` 不可被执行线程绕过。

@@ -6,6 +6,8 @@
 #   fpg-check.sh plan-lint <plan.md>    # 结构：必备区块、清单列、状态枚举、废除的测量值列
 #   fpg-check.sh gate <epic-dir>        # 止损：终止契约存在性、Sprint 预算熔断、blocked-external
 #   fpg-check.sh budget <epic-dir>      # 预算：已用 / 上限（token 实际消耗看遥测看板）
+#   fpg-check.sh narrative-consistency <epic-dir> [--term <词>] [--slice <词>]
+#                                           # 叙述文档横向勾稽：状态词 grep + 已知矛盾模式
 #
 # 输出每条 "OK|WARN|STOP <code>: 说明"，末尾一行总判定。
 # 退出码（二元，便于 agent/CI 判断）：0 = 无 STOP（含仅 WARN，可继续）；2 = 有 STOP（必须停止）。
@@ -51,6 +53,45 @@ first_task_table_rows() {
     seen == 2 && /^\|/ { print; next }
     seen == 2 && !/^\|/ { exit }
   ' "$1"
+}
+
+plan_direct_child_kind() {
+  case "$1" in
+    */epics/E*/sprints/S*/plan.md) printf 'T Task';;
+    */epics/E*/plan.md) printf 'S Sprint';;
+    */iteration/plan.md) printf 'E Epic';;
+    *) printf '';;
+  esac
+}
+
+direct_child_identity_check() {
+  local f="$1" kind label header idx_id row row_id count=0
+  local info
+  info="$(plan_direct_child_kind "$f")"
+  [ -z "$info" ] && return
+  kind="${info%% *}"
+  label="${info#* }"
+
+  header="$(first_task_table_header "$f")"
+  [ -z "$header" ] && return
+  idx_id="$(header_index "$header" "ID")"
+  [ -z "$idx_id" ] && return
+
+  while IFS= read -r row; do
+    row_id="$(trim "$(cell_value "$row" "$idx_id")")"
+    [ -z "$row_id" ] && continue
+    count=$((count + 1))
+    case "$kind:$row_id" in
+      E:E[0-9][0-9][0-9]|S:S[0-9][0-9][0-9]|T:T[0-9][0-9][0-9]) ;;
+      *) stop task_id "${label} 清单 ID 必须是精确 ${kind}###，不得使用组合/范围/别名：${row_id}";;
+    esac
+  done <<EOF
+$(first_task_table_rows "$f")
+EOF
+
+  if [ "$kind" = "T" ] && [ "$count" -gt 4 ]; then
+    stop task_granularity "Sprint Task 数 ${count} > 4：拆分过细或 Sprint 过大；合并同上下文边界 Task，或拆成独立 Sprint"
+  fi
 }
 
 status_is_started() {
@@ -143,6 +184,9 @@ plan_lint() {
     warn list_missing "未找到下级清单表（每级 plan.md 必须含直接下级清单）"
   fi
 
+  # 1.5) 直接子级 ID 必须是精确编号；Sprint Task 最多 4 个
+  direct_child_identity_check "$f"
+
   # 2) 状态值合法性（仅检查清单数据行的状态列值是否出现非法词难度高 → 检查是否存在任何合法状态词）
   if printf '%s' "$content" | grep -qE "$STATUSES"; then
     ok status_vocab "检测到中文状态值"
@@ -161,6 +205,8 @@ plan_lint() {
 
   # 4) Epic 级 plan：终止契约 + 结构决策
   case "$f" in
+    */epics/E*/sprints/S*/plan.md)
+      ;;
     */epics/E*/plan.md)
       if printf '%s' "$content" | grep -q '终止契约'; then
         ok termination_contract "含「终止契约」区块"
@@ -259,12 +305,212 @@ budget() {
   RC=0
 }
 
+narrative_file_list() {
+  local d="$1"
+  find "$d" -type f \( \
+    -name 'plan.md' \
+    -o -name 'smoke-report.md' \
+    -o -name 'checklist*.md' \
+    -o -name '*review*.md' \
+    -o -name 'worklog.md' \
+    -o -name 'test-regression-review.md' \
+  \) 2>/dev/null | sort
+}
+
+project_root_for_epic() {
+  local d="$1" root
+  root="$(cd "$d/../../../.." 2>/dev/null && pwd -P)" || return 1
+  printf '%s' "$root"
+}
+
+grep_narrative() {
+  local d="$1" pattern="$2" f
+  narrative_file_list "$d" | while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    grep -InE -e "$pattern" "$f" 2>/dev/null || true
+  done
+}
+
+slugify_term() {
+  printf '%s' "$1" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/[^[:alnum:]]+/-/g; s/^-+//; s/-+$//'
+}
+
+term_file_pattern() {
+  local term="$1" slug
+  slug="$(slugify_term "$term")"
+  case "$term" in
+    *parser*|*Parser*) printf 'parser'; return;;
+    *配置*parser*|*配置*Parser*) printf 'config|parser'; return;;
+  esac
+  if [ -n "$slug" ]; then
+    printf '%s' "$slug"
+  else
+    printf '%s' "$term"
+  fi
+}
+
+find_impl_files_for_term() {
+  local root="$1" term="$2" pattern
+  pattern="$(term_file_pattern "$term")"
+  find "$root" -type f \
+    ! -path '*/.git/*' \
+    ! -path '*/docs/iteration/*' \
+    ! -path '*/node_modules/*' \
+    ! -path '*/.fpg/*' \
+    2>/dev/null \
+    | grep -E "$pattern" \
+    | grep -E '\.(ts|tsx|js|jsx|java|kt|swift|go|rb|rs|py|sh|yaml|yml|json|md)$' \
+    | sort
+}
+
+has_code_and_test_for_term() {
+  local root="$1" term="$2" files code test f rel
+  files="$(find_impl_files_for_term "$root" "$term" || true)"
+  code="$(printf '%s\n' "$files" | grep -Ev '(^|/)(test|tests|__tests__)/|(\.|-)(test|spec)\.' | head -1 || true)"
+  test="$(printf '%s\n' "$files" | grep -E '(^|/)(test|tests|__tests__)/|(\.|-)(test|spec)\.' | head -1 || true)"
+  [ -n "$code" ] && [ -n "$test" ] || return 1
+  for f in "$code" "$test"; do
+    rel="${f#$root/}"
+    printf '%s ' "$rel"
+  done
+}
+
+line_token() {
+  local line="$1" token
+  token="$(printf '%s' "$line" | grep -Eo '([A-Z][0-9]{3}(/[A-Z]?[0-9]{3})*|[A-Z][0-9]{3}-[A-Z][0-9]{3})[^|:：，,。;；]*' | head -1 || true)"
+  if [ -n "$token" ]; then
+    token="$(printf '%s' "$token" | sed -E 's/[[:space:]]*(待审批|待确认|未审批|不在.*|已调整|已按.*|已解决|已实现|已修复|pass|通过).*$//')"
+    trim "$token"
+    return
+  fi
+  printf '%s' "$line" | awk -F'|' '{for(i=1;i<=NF;i++){gsub(/^[ \t]+|[ \t]+$/, "", $i); if($i!=""){print $i; exit}}}'
+}
+
+same_slice_hit() {
+  local text="$1" slice
+  shift
+  for slice in "$@"; do
+    [ -n "$slice" ] || continue
+    printf '%s' "$text" | grep -Fq -e "$slice" && return 0
+  done
+  return 1
+}
+
+narrative_emit() {
+  local code="$1" msg="$2" text="$3"
+  shift 3
+  if same_slice_hit "$text" "$@"; then
+    stop "$code" "$msg"
+  else
+    warn "$code" "$msg"
+  fi
+}
+
+check_approval_conflicts() {
+  local d="$1"; shift
+  local pending adjusted p_line a_line p_key a_key text
+  pending="$(grep_narrative "$d" '待审批|待确认|未审批|不在[^[:space:]]*修改|blocked|TODO' || true)"
+  adjusted="$(grep_narrative "$d" '已调整|已按.*审批.*调整|已解决|已实现|已修复|pass|通过' || true)"
+  [ -n "$pending" ] && [ -n "$adjusted" ] || return
+
+  while IFS= read -r p_line; do
+    [ -n "$p_line" ] || continue
+    p_key="$(line_token "${p_line#*:}")"
+    [ -n "$p_key" ] || continue
+    while IFS= read -r a_line; do
+      [ -n "$a_line" ] || continue
+      a_key="$(line_token "${a_line#*:}")"
+      [ "$p_key" = "$a_key" ] || continue
+      text="$p_line"$'\n'"$a_line"
+      narrative_emit narrative_conflict "同一叙述项同时出现待处理与已处理口径：${p_key}；请覆盖旧表述，不要追加新行。grep: ${p_line} || ${a_line}" "$text" "$@"
+    done <<EOF
+$adjusted
+EOF
+  done <<EOF
+$pending
+EOF
+}
+
+check_deferred_implemented() {
+  local d="$1" root="$2"; shift 2
+  local terms="$1"; shift
+  local deferred line term hits text
+  deferred="$(grep_narrative "$d" '推迟|待审批|未实现|未接生产|blocked|TODO|旧API名|旧字段名' || true)"
+  [ -n "$deferred" ] || return
+
+  while IFS= read -r term; do
+    [ -n "$term" ] || continue
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      printf '%s' "$line" | grep -Fq -e "$term" || continue
+      hits="$(has_code_and_test_for_term "$root" "$term" || true)"
+      [ -n "$hits" ] || continue
+      text="$line"$'\n'"$hits"
+      narrative_emit narrative_deferred_implemented "叙述仍标「推迟/待处理」，但对应代码和测试已存在：${term}；请改正旧表述。grep: ${line}；code/test: ${hits}" "$text" "$@"
+    done <<EOF
+$deferred
+EOF
+  done <<EOF
+$terms
+EOF
+}
+
+extract_deferred_terms() {
+  local d="$1"
+  grep_narrative "$d" '推迟|待审批|未实现|未接生产|blocked|TODO|旧API名|旧字段名' \
+    | sed -E 's/.*[:：|] *([^|:：，,。;；]+) *(推迟|待审批|未实现|未接生产|blocked|TODO|旧API名|旧字段名).*/\1/; s/.*[-*] *([^，,。;；]+) *(推迟|待审批|未实现|未接生产|blocked|TODO|旧API名|旧字段名).*/\1/' \
+    | sed -E 's/^[[:space:]]+|[[:space:]]+$//g' \
+    | awk 'length($0) > 0 && length($0) < 80 { print }' \
+    | sort -u
+}
+
+narrative_consistency() {
+  local d="$1"; shift
+  [ -d "$d" ] || { stop missing_epic "目录不存在：$d"; return; }
+  local root terms="" slices="" arg next
+  root="$(project_root_for_epic "$d" 2>/dev/null || true)"
+  [ -n "$root" ] || root="$(cd "$d" 2>/dev/null && pwd -P)"
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"; shift
+    case "$arg" in
+      --term|--slice)
+        [ "$#" -gt 0 ] || { stop bad_args "${arg} 缺少参数"; return; }
+        next="$1"; shift
+        if [ "$arg" = "--term" ]; then
+          terms="${terms}${next}
+"
+        else
+          slices="${slices}${next}
+"
+        fi
+        ;;
+      *)
+        terms="${terms}${arg}
+"
+        ;;
+    esac
+  done
+
+  check_approval_conflicts "$d" $slices
+  if [ -z "$(trim "$terms")" ]; then
+    terms="$(extract_deferred_terms "$d" || true)"
+  fi
+  check_deferred_implemented "$d" "$root" "$terms" $slices
+  [ "$WARN_N" -eq 0 ] && [ "$STOP_N" -eq 0 ] && ok narrative_consistency "未发现已知叙述矛盾模式；仍需按执行卡给出 grep 结果与逐条处置"
+}
+
 cmd="${1:-}"; target="${2:-}"
 case "$cmd" in
   plan-lint) [ -n "$target" ] || { echo "用法: fpg-check.sh plan-lint <plan.md>"; exit 2; }; plan_lint "$target";;
   gate)      [ -n "$target" ] || { echo "用法: fpg-check.sh gate <epic-dir>"; exit 2; };      gate "$target";;
   budget)    [ -n "$target" ] || { echo "用法: fpg-check.sh budget <epic-dir>"; exit 2; };    budget "$target"; exit 0;;
-  *) echo "用法: fpg-check.sh {plan-lint <plan.md> | gate <epic-dir> | budget <epic-dir>}"; exit 2;;
+  narrative-consistency)
+             [ -n "$target" ] || { echo "用法: fpg-check.sh narrative-consistency <epic-dir> [--term <词>] [--slice <词>]"; exit 2; }
+             shift 2; narrative_consistency "$target" "$@";;
+  *) echo "用法: fpg-check.sh {plan-lint <plan.md> | gate <epic-dir> | budget <epic-dir> | narrative-consistency <epic-dir> [--term <词>] [--slice <词>]}"; exit 2;;
 esac
 
 # —— 总判定（消除"退出码非零但只有 WARN"的歧义）——

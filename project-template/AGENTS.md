@@ -6,7 +6,7 @@
 
 ## 0. 本项目怎么运作
 - **迭代模式**：以 **Sprint** 为最小交付周期；每个迭代结束做回顾，用遥测观测指标评估并持续改进。
-- **迭代治理**：采用 **Epic(E) → Sprint(S) → Task(T)**；每级 `plan.md` 是唯一计划、直接子项清单与状态真源。**规划期**读 `.fpg/references/iteration-governance.md` 全文；**执行期**只读 `.fpg/references/execution-card.md`（执行卡）；硬规则由 `.fpg/bin/fpg-check.sh` 机械校验。
+- **迭代治理**：采用 **Epic(E) → Sprint(S) → Task(T)**；每级 `plan.md` 是唯一计划与直接子项清单，过程状态当前读数以 telemetry/看板为准。**规划期**读 `.fpg/references/iteration-governance.md` 全文；**执行期**只读 `.fpg/references/execution-card.md`（执行卡）；硬规则由 `.fpg/bin/fpg-check.sh` 机械校验。
 - **契约先行**：先定 PRD → 架构 → API 契约（`api/openapi.yaml`），再并行开发；契约锁定后前后端/多端可并行。
 - **进展从产物派生（无状态文件、无 MCP）**：当前进展由项目真实产物判断——`docs/PRD.md`、`docs/iteration/**/plan.md`、`PROGRESS.md`、`git log`；旧项目兼容 `docs/sprint-N.md`。**新会话/新成员开始前，先读这些产物确定"做到哪了"。**
 

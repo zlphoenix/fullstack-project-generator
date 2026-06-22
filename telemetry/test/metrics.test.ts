@@ -925,6 +925,61 @@ describe("plan-sync.sh", () => {
     expect(sprint?.status).toBe("已验证");
     expect(task?.status).toBe("搁置");
   });
+
+  test("--dry-run 识别中文状态后的说明文本", async () => {
+    const dir = await Bun.$`mktemp -d`.text();
+    const root = dir.trim();
+    const epicDir = join(root, "docs/iteration/epics/E776-annotated-status");
+    const sprintDir = join(epicDir, "sprints/S001-annotated");
+    await Bun.$`mkdir -p ${sprintDir}`.quiet();
+    await Bun.write(join(root, "docs/iteration/plan.md"), `# Iteration Plan
+
+## Epic 清单
+
+| ID | 名称 | 目标 | 状态 | 估计Token | 证据 |
+|---|---|---|---|---|---|
+| E776 | Annotated Epic | demo | 执行中；S001 已启动 | 1k-2k | [plan](epics/E776-annotated-status/plan.md) |
+`);
+    await Bun.write(join(epicDir, "plan.md"), `# E776 Annotated Epic
+
+## Sprint 清单
+
+| ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 估计Token | 证据 |
+|---|---|---|---|---|---|---|---|
+| S001 | Annotated Sprint | Must Deliver | — | 否 | 已实现；待独立评审 | 1k | — |
+`);
+    await Bun.write(join(sprintDir, "plan.md"), `# S001 Annotated Sprint
+
+## Task 清单与指标
+
+| ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 估计Token | 证据 |
+|---|---|---|---|---|---|---|---|
+| T001 | Annotated Task | Must Deliver | — | 否 | 执行中 - 收尾中 | 1k | — |
+`);
+
+    const proc = Bun.spawn({
+      cmd: ["bash", join(TELEMETRY_DIR, "plan-sync.sh"), "--epic-dir", epicDir, "--project", "fixture", "--dry-run"],
+      cwd: REPO_DIR,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+    const snapshot = JSON.parse(stdout) as { nodes: Record<string, unknown>[] };
+    const epic = snapshot.nodes.find((node) => node.level === "E" && node.id === "E776");
+    const sprint = snapshot.nodes.find((node) => node.level === "S" && node.id === "S001");
+    const task = snapshot.nodes.find((node) => node.level === "T" && node.id === "T001");
+
+    expect(epic?.status).toBe("执行中");
+    expect(sprint?.status).toBe("已实现");
+    expect(task?.status).toBe("执行中");
+  });
 });
 
 describe("install.sh", () => {
@@ -1121,6 +1176,269 @@ graph LR
     expect(exitCode).toBe(0);
     expect(stdout).toContain("WARN status_consistency");
     expect(stdout).toContain("状态过期：父级应至少为执行中");
+  });
+});
+
+describe("fpg-check plan identity rules", () => {
+  async function writeSprintPlan(taskRows: string): Promise<string> {
+    const dir = await Bun.$`mktemp -d`.text();
+    const root = dir.trim();
+    const sprintDir = join(root, "docs/iteration/epics/E888-demo/sprints/S001-demo");
+    await Bun.$`mkdir -p ${sprintDir}`.quiet();
+    const planPath = join(sprintDir, "plan.md");
+    await Bun.write(planPath, `# S001 Demo
+
+## Task 清单与指标
+
+| ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 证据 |
+|---|---|---|---|---|---|---|
+${taskRows}
+
+\`\`\`mermaid
+graph LR
+  T001
+\`\`\`
+`);
+    return planPath;
+  }
+
+  async function runPlanLint(planPath: string) {
+    const proc = Bun.spawn({
+      cmd: ["bash", join(REPO_DIR, "project-template/bin/fpg-check.sh"), "plan-lint", planPath],
+      cwd: REPO_DIR,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    return { stdout, stderr, exitCode };
+  }
+
+  test("拒绝组合 Task ID，避免 T003-T004 这类非法归因", async () => {
+    const planPath = await writeSprintPlan(
+      "| T003-T004 | combined work | Must Deliver | — | 否 | 未开始 | — |\n",
+    );
+
+    const result = await runPlanLint(planPath);
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toContain("STOP task_id");
+    expect(result.stdout).toContain("T003-T004");
+  });
+
+  test("拒绝超过 4 个 Task 的 Sprint 计划，要求合并过细拆分", async () => {
+    const planPath = await writeSprintPlan(
+      [
+        "| T001 | one | Must Deliver | — | 否 | 未开始 | — |",
+        "| T002 | two | Must Deliver | — | 否 | 未开始 | — |",
+        "| T003 | three | Must Verify | — | 否 | 未开始 | — |",
+        "| T004 | four | Supporting | — | 否 | 未开始 | — |",
+        "| T005 | five | Supporting | — | 否 | 未开始 | — |",
+      ].join("\n"),
+    );
+
+    const result = await runPlanLint(planPath);
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toContain("STOP task_granularity");
+  });
+});
+
+describe("fpg-check narrative-consistency", () => {
+  async function makeNarrativeProject(): Promise<{ root: string; epicDir: string }> {
+    const dir = await Bun.$`mktemp -d`.text();
+    const root = dir.trim();
+    const epicDir = join(root, "docs/iteration/epics/E009-narrative-gate");
+    const sprintDir = join(epicDir, "sprints/S001-runtime-truth");
+    await Bun.$`mkdir -p ${sprintDir} ${join(root, "src/config")} ${join(root, "test")}`.quiet();
+
+    await Bun.write(join(epicDir, "plan.md"), `# E009 Narrative Gate
+
+## 范围裁定
+
+- 配置 parser 推迟 S002。
+
+## Sprint 清单与指标
+
+| ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 证据 |
+|---|---|---|---|---|---|---|
+| S001 | runtime truth | Must Deliver | — | 否 | 已实现 | — |
+`);
+    await Bun.write(join(sprintDir, "smoke-report.md"), `# Smoke Report
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| E006/E008 conflict | 待审批 | 不在 S001 修改 |
+`);
+    await Bun.write(join(sprintDir, "test-regression-review.md"), `# Test Regression Review
+
+- A005/A006 已按用户审批调整。
+`);
+    await Bun.write(join(sprintDir, "worklog.md"), `# Worklog
+
+- E006/E008 conflict 已调整，回归 45 pass。
+`);
+    await Bun.write(join(root, "src/config/parser.ts"), "export function parseConfig(input: string) { return input.trim(); }\n");
+    await Bun.write(join(root, "test/config-parser.test.ts"), "test('config parser parses values', () => {});\n");
+
+    return { root, epicDir };
+  }
+
+  async function runNarrativeConsistency(epicDir: string, extraArgs: string[] = []) {
+    const proc = Bun.spawn({
+      cmd: ["bash", join(REPO_DIR, "project-template/bin/fpg-check.sh"), "narrative-consistency", epicDir, ...extraArgs],
+      cwd: REPO_DIR,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    return { stdout, stderr, exitCode };
+  }
+
+  test("发现同一冲突项同时写待审批与已调整", async () => {
+    const { epicDir } = await makeNarrativeProject();
+
+    const result = await runNarrativeConsistency(epicDir);
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("WARN narrative_conflict");
+    expect(result.stdout).toContain("E006/E008 conflict");
+    expect(result.stdout).toContain("待审批");
+    expect(result.stdout).toContain("已调整");
+  });
+
+  test("发现 plan 标推迟但对应代码与测试已存在", async () => {
+    const { epicDir } = await makeNarrativeProject();
+
+    const result = await runNarrativeConsistency(epicDir, ["--term", "配置 parser"]);
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("WARN narrative_deferred_implemented");
+    expect(result.stdout).toContain("配置 parser");
+    expect(result.stdout).toContain("推迟");
+    expect(result.stdout).toContain("src/config/parser.ts");
+    expect(result.stdout).toContain("test/config-parser.test.ts");
+  });
+});
+
+describe("tool_hook current-task attribution validation", () => {
+  async function makeHookProject(taskMarker: string): Promise<{ root: string; queue: string }> {
+    const dir = await Bun.$`mktemp -d`.text();
+    const root = dir.trim();
+    const epicDir = join(root, "docs/iteration/epics/E123-demo");
+    const sprintDir = join(epicDir, "sprints/S001-demo");
+    const queue = join(root, "queue");
+    await Bun.$`mkdir -p ${sprintDir} ${join(root, ".fpg")} ${queue} ${join(root, "home")}`.quiet();
+    await Bun.write(join(epicDir, "plan.md"), `# E123 Demo
+
+## Sprint 清单与指标
+
+| ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 证据 |
+|---|---|---|---|---|---|---|
+| S001 | sprint | Must Deliver | — | 否 | 执行中 | — |
+`);
+    await Bun.write(join(sprintDir, "plan.md"), `# S001 Demo
+
+## Task 清单与指标
+
+| ID | 名称 | 分类 | 前置 | 可并行 | 状态 | 证据 |
+|---|---|---|---|---|---|---|
+| T001 | valid task | Must Deliver | — | 否 | 执行中 | — |
+`);
+    await Bun.write(join(root, ".fpg/current-task"), taskMarker);
+    return { root, queue };
+  }
+
+  async function runHook(root: string, queue: string) {
+    const proc = Bun.spawn({
+      cmd: ["bash", join(REPO_DIR, "telemetry/hooks/tool_hook.sh"), "test"],
+      cwd: root,
+      env: {
+        ...Bun.env,
+        FPG_HOME: REPO_DIR,
+        FPG_PROJECT: "hook-demo",
+        FPG_TELEMETRY_ENDPOINT: "",
+        FPG_TELEMETRY_QUEUE: queue,
+        FPG_TELEMETRY_DISABLED: "0",
+        HOME: join(root, "home"),
+      },
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    proc.stdin.write(
+      JSON.stringify({ hook_event_name: "Stop", cwd: root, session_id: "session-1", turn_id: "turn-1" }),
+    );
+    proc.stdin.end();
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    const files = await Array.fromAsync(new Bun.Glob("*.json").scan({ cwd: queue }));
+    const payload = JSON.parse(await Bun.file(join(queue, files[0])).text());
+    return { stdout, stderr, exitCode, payload };
+  }
+
+  test("合法 current-task 会提交精确 E/S/T 归因", async () => {
+    const { root, queue } = await makeHookProject(
+      [
+        "epic=E123",
+        "epic_path=docs/iteration/epics/E123-demo/plan.md",
+        "sprint=S001",
+        "sprint_path=docs/iteration/epics/E123-demo/sprints/S001-demo/plan.md",
+        "task=T001",
+        "task_path=docs/iteration/epics/E123-demo/sprints/S001-demo/plan.md",
+        "skill=sprint-develop",
+        "phase=sprint_develop",
+      ].join("\n"),
+    );
+
+    const result = await runHook(root, queue);
+
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.payload.attrs.epic).toBe("E123");
+    expect(result.payload.attrs.sprint).toBe("S001");
+    expect(result.payload.attrs.task).toBe("T001");
+  });
+
+  test("非法 current-task 不提交 E/S/T 归因，但保留回合事件和错误原因", async () => {
+    const { root, queue } = await makeHookProject(
+      [
+        "epic=E123",
+        "epic_path=docs/iteration/epics/E123-demo/plan.md",
+        "sprint=S001",
+        "sprint_path=docs/iteration/epics/E123-demo/sprints/S001-demo/plan.md",
+        "task=T003-T004",
+        "task_path=docs/iteration/epics/E123-demo/sprints/S001-demo/plan.md",
+        "skill=sprint-develop",
+        "phase=sprint_develop",
+      ].join("\n"),
+    );
+
+    const result = await runHook(root, queue);
+
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.payload.event_type).toBe("turn_complete");
+    expect(result.payload.attrs.epic).toBeUndefined();
+    expect(result.payload.attrs.sprint).toBeUndefined();
+    expect(result.payload.attrs.task).toBeUndefined();
+    expect(result.payload.attrs.attribution_error).toContain("task");
   });
 });
 

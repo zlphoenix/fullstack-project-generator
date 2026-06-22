@@ -9,7 +9,7 @@ description: |
 # sprint-develop — Sprint 功能代码实现
 
 **目标：** 严格按 Sprint 计划与 OpenAPI 契约实现代码，遵循各平台架构规范。
-**范围：每次调用 1 个上下文切片＝1 个平台/上下文边界（可含同边界多个清单 Task），摊薄重复上下文加载。**
+**范围：每次调用 1 个上下文切片＝1 个平台/上下文边界＝1 个精确 Task ID。若多个清单 Task 属于同一上下文边界，先合并计划行再执行，摊薄重复上下文加载。**
 **前置条件**：当前 Sprint 计划文档（docs/iteration/.../S###/plan.md 或 docs/sprint-N.md）+ api/openapi.yaml 必须存在。
 > 通用约定见项目根 `AGENTS.md`。执行期治理只读 `.fpg/references/execution-card.md`（执行卡）——
 > 起步检查、止损红线（fpg-check gate）、验收与收尾清单全在卡上，**本文不重复**。
@@ -35,7 +35,7 @@ description: |
 
 按执行卡「起步」一节执行（恢复上下文 → `fpg-check gate` → 退出场景自检 → 冒烟 → 确认切片 → 写 `.fpg/current-task` 归因标记）。
 
-- 用户输入 `e1-s2-t5`、`t5` 等短编号时，归一化为 `E001/S002/T005` 后扫描目录；多个候选先确认。
+- 用户输入 `e1-s2-t5`、`t5` 等短编号时，归一化为 `E001/S002/T005` 后扫描目录；多个候选先确认。不得把 `T003-T004` 这类组合 ID 写入 `.fpg/current-task`；同上下文小任务先回计划合并为一个 `T###`。
 - 旧项目兼容读取 `docs/sprint-N.md`。
 - token/耗时由 hook 自动采集，**不手工估算或回填**。
 
@@ -56,7 +56,7 @@ description: |
 
 ## 4. 验收与收尾
 
-按执行卡「验收」「收尾」两节执行（生成者≠评估者、契约一致性核对、更新 plan 行状态+证据、worklog/smoke-report 分节、PROGRESS.md、描述性 commit、删除 `.fpg/current-task`）。
+按执行卡「验收」「收尾」两节执行（生成者≠评估者、契约一致性核对、更新 plan 行状态+证据、同步 telemetry、竣工勾稽、worklog/smoke-report 分节、PROGRESS.md、描述性 commit、删除 `.fpg/current-task`）。竣工勾稽必须覆盖本 Epic 的 plan/smoke/checklist/review/worklog：状态看 telemetry，叙述文档只保留决策、范围、证据、冲突口径；被本切片证伪的旧表述要覆盖改正，不追加矛盾新行。
 
 完成后提示：
 > "本切片已实现并通过验收。若本 Sprint 还有未完成上下文切片，继续调用 sprint-develop；全部完成后使用 **project-qa**。"
