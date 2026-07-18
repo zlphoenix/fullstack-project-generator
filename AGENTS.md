@@ -31,7 +31,7 @@ docs/                       # 治理(决策/里程碑)、研究、规划、度�
 
 ```
 project-requirements → project-architecture → project-scaffold
-  → sprint-plan → sprint-develop → project-qa → project-deploy
+  → sprint-plan → sprint-develop → project-qa → fpg-iteration-review → project-deploy
 ```
 
 | Skill | 输出 | 触发示例 |
@@ -42,6 +42,7 @@ project-requirements → project-architecture → project-scaffold
 | sprint-plan | docs/iteration/epics/E###/sprints/S###/plan.md | "规划第一个Sprint" |
 | sprint-develop | 功能代码（每次 1 个上下文切片＝1 平台/上下文边界） | "实现用户登录" |
 | project-qa | 各平台测试文件 | "写测试策略" |
+| fpg-iteration-review | 独立缺陷审查、FPG 验收与关闭判定 | "审查迭代 / 是否可以关闭" |
 | project-deploy | docker/ + .github/workflows/ci.yml | "配置Docker部署" |
 
 ## 常用命令

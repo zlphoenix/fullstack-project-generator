@@ -1,0 +1,4 @@
+interface:
+  display_name: "FPG 迭代审查与验收"
+  short_description: "严格识别迭代缺陷并验证 FPG 交付目标是否真正达成"
+  default_prompt: "Use $fpg-iteration-review to review the current iteration, identify actionable issues, and decide whether its FPG goals are achieved."

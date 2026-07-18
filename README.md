@@ -28,7 +28,7 @@ AI 辅助开发的瓶颈已从"模型会不会写代码"转移到"**如何为模
 
 ```
 project-requirements → project-architecture → project-scaffold
-   → sprint-plan → sprint-develop → project-qa → project-deploy
+   → sprint-plan → sprint-develop → project-qa → fpg-iteration-review → project-deploy
 ```
 
 | Skill | 作用 | 输出 |
@@ -39,6 +39,7 @@ project-requirements → project-architecture → project-scaffold
 | `sprint-plan` | Sprint 迭代计划 | `docs/sprint-N.md` |
 | `sprint-develop` | 功能实现（**1 Story × 1 平台/次**） | 功能代码 + 测试 |
 | `project-qa` | 测试金字塔 | 各平台测试文件 |
+| `fpg-iteration-review` | 独立审查缺陷并验证迭代 DoD | Findings、修改建议、验收矩阵与关闭判定 |
 | `project-deploy` | 容器化 + CI/CD | `docker/` + `.github/workflows/ci.yml` |
 
 **支持平台：** Backend（Spring Boot/Java；TypeScript+Bun 规范规划中）、iOS（SwiftUI）、Android（Compose）、Web（Next.js）。
@@ -91,6 +92,7 @@ bash scripts/install.sh --project-dir <你的项目路径> --tools claude,codex 
 你：规划第一个 Sprint → sprint-plan
 你：实现用户登录（后台）→ sprint-develop（1 Story × 1 平台）
 你：写测试 → project-qa
+你：严格审查当前迭代是否达到 FPG 目标 → fpg-iteration-review
 你：配置 Docker 部署 → project-deploy
 ```
 
