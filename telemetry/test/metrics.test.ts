@@ -926,6 +926,42 @@ describe("plan-sync.sh", () => {
     expect(task?.status).toBe("搁置");
   });
 
+  test("--dry-run 忽略 Epic 表格行之间的空行", async () => {
+    const dir = await Bun.$`mktemp -d`.text();
+    const root = dir.trim();
+    const epicDir = join(root, "docs/iteration/epics/E775-blank-row");
+    await Bun.$`mkdir -p ${epicDir}`.quiet();
+    await Bun.write(join(root, "docs/iteration/plan.md"), `# Iteration Plan
+
+## Epic 清单
+
+| ID | 名称 | 目标 | 状态 | 估计Token | 证据 |
+|---|---|---|---|---|---|
+| E774 | Earlier Epic | done | 已完成 | 1k | — |
+
+| E775 | Closed After Blank | done | 已完成 | 1k | [plan](epics/E775-blank-row/plan.md) |
+`);
+    await Bun.write(join(epicDir, "plan.md"), "# E775 Closed After Blank\n");
+
+    const proc = Bun.spawn({
+      cmd: ["bash", join(TELEMETRY_DIR, "plan-sync.sh"), "--epic-dir", epicDir, "--project", "fixture", "--dry-run"],
+      cwd: REPO_DIR,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+    const snapshot = JSON.parse(stdout) as { nodes: Record<string, unknown>[] };
+    const epic = snapshot.nodes.find((node) => node.level === "E" && node.id === "E775");
+    expect(epic?.status).toBe("已完成");
+  });
+
   test("--dry-run 识别中文状态后的说明文本", async () => {
     const dir = await Bun.$`mktemp -d`.text();
     const root = dir.trim();

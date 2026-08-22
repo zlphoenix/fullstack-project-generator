@@ -288,6 +288,7 @@ task_table_rows() {
     /^\|/ && /ID/ && /名称/ { seen=1; next }
     seen == 1 && /^\|[[:space:]]*:?-{3,}/ { seen=2; next }
     seen == 2 && /^\|/ { print NR "\t" $0; next }
+    seen == 2 && /^[[:space:]]*$/ { next }
     seen == 2 && !/^\|/ { exit }
   ' "$1"
 }
